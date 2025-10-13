@@ -1,0 +1,3 @@
+Git
+!git config --global credential.helper manager
+setenv('PATH', [getenv('PATH') ';C:\Program Files\Git\bin'])
