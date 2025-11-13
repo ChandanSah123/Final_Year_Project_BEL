@@ -86,4 +86,5 @@ plot(t,delta3,'LineWidth',1)
 grid on
 ylabel('delta')
 xlabel('Time (s)')
+legend({'Gen1@Bus1', 'Gen2@Bus2', 'Gen3@Bus3'},'Location','southwest');
 linkaxes(handles, 'x')

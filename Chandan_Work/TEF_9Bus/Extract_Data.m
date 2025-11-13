@@ -22,15 +22,67 @@ for i = 1:length(lineBlocks)
     line_data(i).Mutual_Resistance = str2double(get_param(block_path, 'Rm'));
 end
 
-% ----- Transformers -----
+% ----- Transformers --ss---
 transBlocks = find_system(modelName, 'MaskType', 'Two-Winding Transformer (Three-Phase)');
 trans_data = struct();
 
 for i = 1:length(transBlocks)
     block_path1 = transBlocks{i};
+    trans_data(i).BlockName=get_param(block_path1, 'Name');
     trans_data(i).PrimaryWindingResistance = str2double(get_param(block_path1, 'pu_RW1'));
     trans_data(i).SecondaryWindingResistance = str2double(get_param(block_path1, 'pu_RW2'));
     trans_data(i).PrimaryLeakageReactance = eval(get_param(block_path1, 'pu_Xl1'));   % has '/2' form
     trans_data(i).SecondaryLeakageReactance = eval(get_param(block_path1, 'pu_Xl2'));
 end
+%loading active and reactive power of load
+load_block= find_system(modelName, 'MaskType', 'Wye-Connected Load');
+load_data=struct();
+for i=1:length(load_block)
+    block_path2=load_block{i};
+    load_data(i).BlockName= get_param(block_path2, 'Name');
+    load_data(i).Real_power=str2double(get_param(block_path2,'P'));
+    load_data(i).Reactive_power=str2double(get_param(block_path2,'Qpos'));
+end
 
+%loading generator resistance, reactances, transient and sub-transeint reactances
+generator_block1=find_system(modelName,'MaskType','Synchronous Machine Salient Pole');
+generator_block2=find_system(modelName,'MaskType','Synchronous Machine Round Rotor');
+generator_data1=struct();
+generator_data2=struct();
+
+%for silent rotor type
+for i=1:length(generator_block1)
+    block_path4=generator_block1{i};
+    generator_data1(i).BlockName=get_param(block_path4, 'Name');
+    generator_data1(i).stator_resistance=str2double(get_param(block_path4,'Ra'));
+    generator_data1(i).leakage_reactance=str2double(get_param(block_path4,'Xl'));
+    generator_data1(i).Xd=str2double(get_param(block_path4,'Xd'));
+    generator_data1(i).Xq=str2double(get_param(block_path4,'Xq'));
+    generator_data1(i).Xdd=str2double(get_param(block_path4,'Xdd'));
+    generator_data1(i).Xddd=str2double(get_param(block_path4,'Xddd'));
+    generator_data1(i).Xqdd=str2double(get_param(block_path4,'Xqdd'));
+end
+%for round rotor type
+for i=1:length(generator_block2)
+    block_path3=generator_block2{i};
+    generator_data2(i).BlockName=get_param(block_path3, 'Name');
+    generator_data2(i).stator_resistance=str2double(get_param(block_path3,'Ra'));
+    generator_data2(i).leakage_reactance=str2double(get_param(block_path3,'Xl'));
+    generator_data2(i).Xd=str2double(get_param(block_path3,'Xd'));
+    generator_data2(i).Xq=str2double(get_param(block_path3,'Xq'));
+    generator_data2(i).Xdd=str2double(get_param(block_path3,'Xdd'));
+    generator_data2(i).Xqd=str2double(get_param(block_path3,'Xqd'));
+    generator_data2(i).Xddd=str2double(get_param(block_path3,'Xddd'));
+    generator_data2(i).Xqdd=str2double(get_param(block_path3,'Xqdd'));
+
+end
+
+%Reading Mechanical Power
+mechanical_block=find_system(modelName,'MaskType','Machine Mechanical Power');
+mechanical_data=struct();
+for i=1:length(mechanical_block)
+    block_path5=mechanical_block{i};
+    mechanical_data(i).BlockName=get_param(block_path5,'Name');
+    mechanical_data(i).ApparantPower=str2double(get_param(block_path5,'SRated'));
+    mechanical_data(i).Inetria_H=str2double(get_param(block_path5,'H'));
+end

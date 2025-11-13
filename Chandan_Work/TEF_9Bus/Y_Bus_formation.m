@@ -9,12 +9,12 @@ nBus = 9;
 
 % Transmission lines: order must match line_data order (6 entries)
 line_conn = [
-    7 8;
-    7 5;
-    5 4;
+    4 5;
     4 6;
+    5 7;
     6 9;
-    8 9
+    7 8;
+    8 9;
 ];
 
 %primary (230 kV bus))
@@ -47,12 +47,6 @@ for k = 1:length(line_data)
     R_total = (R_ohm_per_km) * len_km;        % ohms
     X_total = omega * (L_h_per_km - M_h_per_km) * len_km; % ohms (positive-seq approx)
     Z_line_ohm = R_total + 1j*X_total;
-
-    % If you want to include mutual resistance effect approximately:
-    % (a simple approach is to add average mutual-resistance contribution if provided)
-    if ~isempty(Rm_ohm_per_km) && ~isnan(Rm_ohm_per_km) && Rm_ohm_per_km~=0
-        Z_line_ohm = Z_line_ohm + (Rm_ohm_per_km * len_km)/3; % approximate partition
-    end
 
     % Convert series impedance to per-unit on system base (230kV, S_base)
     Zpu_line = Z_line_ohm / Z_base;   % pu
@@ -96,15 +90,10 @@ for k = 1:length(trans_data)
     Zpu_w2 = complex(Rw2, Xl2);   % pu on transformer base (secondary winding)
 
     % Total series pu on primary side (pu on same base as primary)
-    Zpu_total_primary_side = Zpu_w1 + Zpu_w2 ;
-
-    % Now Zpu_total_primary_side is pu referenced to primary voltage base.
-    % If your system base S_base equals transformer's S_base and V_base = primary V (230kV),
-    % then this pu value is consistent with the rest of the system and can be used directly.
-    % (User said transformer pu values don't need conversion; we followed that by only referring to primary side.)
+    Zpu_total = Zpu_w1 + Zpu_w2 ;
 
     % Convert series pu into series admittance (pu)
-    Yt_pu = 1 / Zpu_total_primary_side;
+    Yt_pu = 1 / Zpu_total;
 
     % Stamp transformer as a series branch between pri_bus and sec_bus
     Ybus(pri_bus, pri_bus) = Ybus(pri_bus, pri_bus) + Yt_pu;
@@ -112,4 +101,4 @@ for k = 1:length(trans_data)
     Ybus(pri_bus, sec_bus) = Ybus(pri_bus, sec_bus) - Yt_pu;
     Ybus(sec_bus, pri_bus) = Ybus(sec_bus, pri_bus) - Yt_pu;
 end
-disp(Ybus)
+%disp(Ybus)

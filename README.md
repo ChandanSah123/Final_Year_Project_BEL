@@ -10,7 +10,7 @@ Tasks:
 
 
 2.Data Collection –Binod Sah
- Run all fault simulations, export rotor angles, speeds, voltages, organize data.
+ Run all fault simulations, Build Lookup Table, organize data for training LSTM
 
 
 3.LSTM Model – Bishal ch
