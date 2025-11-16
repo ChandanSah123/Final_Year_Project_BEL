@@ -1,19 +1,6 @@
-% tef_bcu_ieee9.m
-% Full BCU algorithm (Sauer & Pai / Bhui & Senroy style) for IEEE-9 example
-% Put this in a .m file and run. Uses variables defined below (or in workspace).
+
  close all; clc;
-
-%%%%% ------------------ USER / DATA SECTION ------------------ %%%%%
-% --- Put your precomputed Y (9x9) here (admittance matrix on HV base).
-% Example: load prebuilt Y from workspace or file. Replace with your Y.
-% load('Y_ieee9.mat','Y');  % <- optional if you saved Y earlier
-% For this script we assume Y (9x9) already exists in the workspace.
-% If not, you must assemble Y exactly as in your earlier code.
-% -----------------------------------------------------------------
-% Use the Y you used above (the script you posted). If Y is not in workspace,
-% the script will error. Make sure your Y is present.
-
-% ------- Machine / system data (from Table 7.1 & Example 7.6) -------
+%from Table 7.1 & Example 7.6
 Pm = [0.716, 1.63, 0.85];                 % mechanical power, pu (generator 1..3)
 % Internal EMFs (from Example 7.6) -- constant for classical model
 E1 = 1.054*exp(1j*deg2rad(2.2670));
@@ -34,7 +21,7 @@ load_ybar(6,6) = (0.877 - 0.292i);
 load_ybar(8,8) = (0.968 - 0.339i);
 
 % transformer branch Y for 5-7 (used when removing branch)
-Y78 = 1.187 - 5.975i;  % as you used earlier
+Y78 = 1.187 - 5.975i;
 
 % Pre-fault machine terminal voltages (angles) from Table 7.1 / Example 7.6
 Vt1 = 1.04*exp(1j*deg2rad(0.0));
@@ -73,9 +60,6 @@ Yint_pre_full = Yint_pre;
 
 %%%%% ------------------ CREATE FAULT-ON and POST-FAULT Yint ------------------ %%%%%
 % Fault at bus 7 (bus indexing: follow your Y bus indexes so 7 means the same)
-% Fault-on modeling: we represent as bus 7 grounded (i.e. remove row/col or add large shunt)
-% We'll use "remove row/col" method for the network blocks when computing reduced YintF.
-
 % Create YN2F (remove bus 7 from network) - for the fault-on reduction we need the network with bus 7
 YN2F = YN2;
 YN2F(7,:) = [];
