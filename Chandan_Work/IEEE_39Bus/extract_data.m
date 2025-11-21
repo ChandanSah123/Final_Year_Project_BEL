@@ -36,12 +36,12 @@ end
 
 %loading active and reactive power of load
 load_block= find_system(modelName, 'MaskType', 'Wye-Connected Load');
-load_data=struct();
+Bus_data=struct();
 for i=1:length(load_block)
     block_path2=load_block{i};
-    load_data(i).BlockName= get_param(block_path2, 'Name');
-    load_data(i).Real_power=str2double(get_param(block_path2,'P'));
-    load_data(i).Reactive_power=str2double(get_param(block_path2,'Qpos'));
+    Bus_data(i).BlockName= get_param(block_path2, 'Name');
+    Bus_data(i).Real_power=str2double(get_param(block_path2,'P'));
+    Bus_data(i).Reactive_power=str2double(get_param(block_path2,'Qpos'));
 end
 
 %loading generator resistance, reactances, transient and sub-transeint reactances
@@ -85,4 +85,15 @@ for i=1:length(mechanical_block)
     mechanical_data(i).BlockName=get_param(block_path5,'Name');
     mechanical_data(i).ApparantPower=str2double(get_param(block_path5,'SRated'));
     mechanical_data(i).Inetria_H=str2double(get_param(block_path5,'H'));
+end
+
+
+%%Bus base voltage
+
+Bus_bar= find_system(modelName, 'MaskType', 'Busbar');
+Bus_data=struct();
+for i=1:length(Bus_bar)
+    block_path9=Bus_bar{i};
+    Bus_data(i).BlockName= get_param(block_path9, 'Name');
+    Bus_data(i).Base_Voltage=str2double(get_param(block_path9,'VRated'));
 end
