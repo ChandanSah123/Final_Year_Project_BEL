@@ -1,6 +1,6 @@
 
 % Y previously entered Ybus matrix
-
+Y=Y_pre;
 % Define ybar (3x3)
 ybar = diag([-1i*16.45, -1i*8.35, -1i*5.52]);
 load_ybar=complex(zeros(9,9));
@@ -30,7 +30,7 @@ YN2=YN1+load_ybar;
 Y_aug(4:12, 4:12) = YN2;
 
 
-%% Display result
+%% Display reault
 %disp('Augmented Admittance Matrix (YN1):');
 %disp(Y_aug);
 %Reducing to form Yint
@@ -43,4 +43,3 @@ YD=YN2;
 YDC=YD\YC;
 Yint=YA-YB*YDC;
 disp(Yint);
-
