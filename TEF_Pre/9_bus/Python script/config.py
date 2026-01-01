@@ -4,8 +4,8 @@ import os
 # ==============================================================================
 # 1. PATHS & DIRECTORIES
 # ==============================================================================
-WORK_DIR = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\9_bus\Python script"
-RESULT_DIR = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\9_bus\Matlab script"
+WORK_DIR = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\9_bus\Python script"
+RESULT_DIR = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\9_bus\Matlab script"
 
 # Auto-generate full file paths
 RAW_FILE = os.path.join(WORK_DIR, "IEEE9bus.raw")
@@ -28,7 +28,7 @@ LINE_ID = '1 '
 T_FAULT_START = 1.0
 # Single centralized clearing time used by all scripts
 T_CLEAR = 0.17
-T_END = 4.0
+T_END = T_FAULT_START + T_CLEAR+0.5
 # ==============================================================================
 # 3. SYSTEM DATA (For Y-Bus Calculation)
 # ==============================================================================
