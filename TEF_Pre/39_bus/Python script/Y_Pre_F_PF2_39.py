@@ -16,8 +16,8 @@ except ImportError:
 # 1. USER CONFIGURATION
 # ==============================================================================
 # --- File Paths ---
-work_dir   = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Python script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Matlab script"
+work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
+result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
 
 raw_file   = os.path.join(work_dir, "IEEE39bus.raw")    # Ensure this matches your filename
 dyr_file   = os.path.join(work_dir, "ieee39buscls.dyr") # Your GENCLS dyr file

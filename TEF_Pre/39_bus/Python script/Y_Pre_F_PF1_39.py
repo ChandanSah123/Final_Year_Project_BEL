@@ -13,17 +13,17 @@ except ImportError:
     pass 
 
 # ----------------- USER CONFIG -----------------
-work_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Python Script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Matlab script"
+work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
+result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
 raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
 dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
 txt_file = os.path.join(result_dir, "Ybus_Export.txt")
 mat_file = os.path.join(result_dir, "Y_all.mat")
 
 # Fault & clearing specification (IEEE 39 Bus)
-fault_bus = 36
-trip_line_from = 36
-trip_line_to = 23
+fault_bus = 29
+trip_line_from = 29
+trip_line_to = 26
 circuit_id = '1 '
 
 gen_buses = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39]  # Generator bus numbers

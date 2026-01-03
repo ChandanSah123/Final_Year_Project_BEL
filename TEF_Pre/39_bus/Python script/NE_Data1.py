@@ -8,9 +8,8 @@ import os
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
-work_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Python Script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Matlab script"
-
+work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
+result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
 raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
 dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
 out_file = os.path.join(result_dir, "IEEE39.out")
@@ -27,15 +26,15 @@ psspy.psseinit(50)
 print("--- Starting Simulation for IEEE 39-Bus ---")
 
 # --- Simulation Settings ---
-fault_bus = 15
-from_bus = 15
-to_bus = 14
+fault_bus = 29
+from_bus = 29
+to_bus = 26
 line_id = '1 '
 
 fault_time = 1.0
-t_cl = 0  
+t_cl = 0.156
 clear_time = fault_time + t_cl
-end_time = 4
+end_time = fault_time + t_cl + 5
 
 # --- Load Case ---
 psspy.read(0, raw_file)

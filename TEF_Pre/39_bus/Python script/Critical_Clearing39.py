@@ -6,8 +6,8 @@ import os
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
-work_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Python Script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Matlab script"
+work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
+result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
 raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
 dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
 out_file = os.path.join(result_dir, "IEEE9_CCT_Search.out")
@@ -27,9 +27,9 @@ def run_simulation(clearing_duration):
     Returns: (is_stable, max_spread_found)
     """
     # --- Simulation Parameters ---
-    fault_bus = 36
-    from_bus = 36
-    to_bus = 23
+    fault_bus = 29
+    from_bus = 29
+    to_bus = 26
     line_id = '1 '
     
     t_fault_start = 1.0
