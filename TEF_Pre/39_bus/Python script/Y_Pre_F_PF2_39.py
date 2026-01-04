@@ -3,6 +3,7 @@ import re
 import numpy as np
 import scipy.io as sio
 import sys
+import config
 
 # Attempt to import PSS/E modules
 try:
@@ -16,13 +17,13 @@ except ImportError:
 # 1. USER CONFIGURATION
 # ==============================================================================
 # --- File Paths ---
-work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
 
-raw_file   = os.path.join(work_dir, "IEEE39bus.raw")    # Ensure this matches your filename
-dyr_file   = os.path.join(work_dir, "ieee39buscls.dyr") # Your GENCLS dyr file
-txt_file   = os.path.join(result_dir, "Ybus_Export.txt")
-mat_file   = os.path.join(result_dir, "Y_all.mat")
+raw_file = config.raw_path("IEEE39bus.raw")    # Ensure this matches your filename
+dyr_file = config.DYR_FILE # Your GENCLS dyr file
+txt_file = config.out_path("Ybus_Export.txt")
+mat_file = config.out_path("Y_all.mat")
 
 # --- Scenario Settings ---
 # Fault Specification
@@ -36,7 +37,7 @@ CKT_ID         = '1 '     # Circuit ID of the line to trip
 # ==============================================================================
 
 def init_psse_and_read_case():
-    psspy.psseinit(2000) # Support larger systems
+    psspy.psseinit(config.PSSE_INIT) # Use centralized PSSE_INIT
     
     # Read RAW
     if not os.path.exists(raw_file):

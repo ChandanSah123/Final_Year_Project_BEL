@@ -4,21 +4,22 @@ import dyntools
 import scipy.io
 import numpy as np
 import os
+import config
 
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
-work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
-raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
-dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
-out_file = os.path.join(result_dir, "IEEE39.out")
-mat_file = os.path.join(result_dir, "data1.mat") 
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
+raw_file = config.raw_path("IEEE39bus1.raw")
+dyr_file = config.DYR_FILE
+out_file = config.out_path("IEEE39.out")
+mat_file = config.out_path("data1.mat")
 
 # Initialize PSS/E
 _i = psspy.getdefaultint()
 _f = psspy.getdefaultreal()
-psspy.psseinit(50)
+psspy.psseinit(config.PSSE_INIT)
 
 # ==============================================================================
 # 2. SIMULATION
@@ -26,13 +27,13 @@ psspy.psseinit(50)
 print("--- Starting Simulation for IEEE 39-Bus ---")
 
 # --- Simulation Settings ---
-fault_bus = 29
-from_bus = 29
-to_bus = 26
-line_id = '1 '
+fault_bus = config.FAULT_BUS
+from_bus = config.TRIP_LINE_FROM
+to_bus = config.TRIP_LINE_TO
+line_id = config.CKT_ID
 
-fault_time = 1.0
-t_cl = 5
+fault_time = config.FAULT_TIME
+t_cl = config.DEFAULT_CLEARING
 clear_time = fault_time + t_cl
 end_time = fault_time + t_cl
 

@@ -99,7 +99,7 @@ psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
 psspy.run(0, clear_time, 0, 1, 0)
 
 print(f"Tripping Line {from_bus}-{to_bus}...")
-#psspy.dist_branch_trip(from_bus, to_bus, line_id)
+psspy.dist_branch_trip(from_bus, to_bus, line_id)
 psspy.dist_clear_fault(1)
 
 psspy.run(0, end_time, 0, 1, 0)

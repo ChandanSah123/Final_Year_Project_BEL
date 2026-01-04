@@ -2,21 +2,21 @@ import psse3603
 import psspy
 import dyntools
 import os
+import config
 
-# ==============================================================================
-# 1. SETUP
-# ==============================================================================
-work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
-raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
-dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
-out_file = os.path.join(result_dir, "IEEE9_CCT_Search.out")
-
+# ======================================================================
+# 1. SETUP (centralized config)
+# ======================================================================
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
+raw_file = config.raw_path("IEEE39bus1.raw")
+dyr_file = config.DYR_FILE
+out_file = config.out_path("IEEE9_CCT_Search.out")
 
 # Initialize PSS/E
 _i = psspy.getdefaultint()
 _f = psspy.getdefaultreal()
-psspy.psseinit(50)
+psspy.psseinit(config.PSSE_INIT)
 
 # ==============================================================================
 # 2. SIMULATION ENGINE
@@ -47,8 +47,8 @@ def run_simulation(clearing_duration):
     psspy.read(0, raw_file)
     psspy.dyre_new([1,1,1,1], dyr_file, "", "", "")
 
-    # --- Solver Settings (CRITICAL: 0.001s Step) ---
-    psspy.dynamics_solution_param_2([_i]*8, [_f, _f, 0.001, _f, _f, _f, _f, _f])
+    # --- Solver Settings (use centralized timestep) ---
+    psspy.dynamics_solution_param_2([_i]*8, [_f, _f, config.DYNAMICS_STEP, _f, _f, _f, _f, _f])
     psspy.fnsl([0,0,0,1,1,0,99,0])
 
     # --- Convert Generators ---

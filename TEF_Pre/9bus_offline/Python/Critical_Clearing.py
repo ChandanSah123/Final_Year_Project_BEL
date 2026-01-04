@@ -93,7 +93,7 @@ def run_simulation(clearing_duration):
     psspy.run(0, t_clear, 0, 1, 0)
 
     # Clear Fault
-    #psspy.dist_branch_trip(from_bus, to_bus, line_id)
+    psspy.dist_branch_trip(from_bus, to_bus, line_id)
     psspy.dist_clear_fault(1)
     psspy.run(0, t_end, 0, 1, 0)
 

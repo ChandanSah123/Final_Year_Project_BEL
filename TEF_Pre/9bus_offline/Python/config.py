@@ -4,8 +4,10 @@ import os
 # ==============================================================================
 # 1. PATHS & DIRECTORIES
 # ==============================================================================
-WORK_DIR = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\9_bus\Python script"
-RESULT_DIR = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\9_bus\Matlab script"
+BASE_DIR = os.path.dirname(__file__)
+WORK_DIR = BASE_DIR
+RESULT_DIR = os.path.join(os.path.dirname(BASE_DIR), "Matlab")
+
 
 # Auto-generate full file paths
 RAW_FILE = os.path.join(WORK_DIR, "IEEE9bus.raw")
@@ -21,14 +23,14 @@ TXT_FILE_YBUS = os.path.join(RESULT_DIR, "Ybus_Export.txt")
 # ==============================================================================
 FAULT_BUS = 7
 TRIP_LINE_FROM = 7
-TRIP_LINE_TO = 8
+TRIP_LINE_TO = 5
 LINE_ID = '1 '
 
 # Timing
 T_FAULT_START = 1.0
 # Single centralized clearing time used by all scripts
-T_CLEAR = 2
-T_END = T_FAULT_START + T_CLEAR
+T_CLEAR = 0.16
+T_END = T_FAULT_START + T_CLEAR+2
 # ==============================================================================
 # 3. SYSTEM DATA (For Y-Bus Calculation)
 # ==============================================================================

@@ -3,6 +3,7 @@ import re
 import numpy as np
 import scipy.io as sio
 import sys
+import config
 
 # Attempt to import PSS/E modules
 try:
@@ -12,19 +13,19 @@ try:
 except ImportError:
     pass 
 
-# ----------------- USER CONFIG -----------------
-work_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Python script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\Final_Year_Project_BEL\TEF_Pre\39_bus\Matlab script"
-raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
-dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
-txt_file = os.path.join(result_dir, "Ybus_Export.txt")
-mat_file = os.path.join(result_dir, "Y_all.mat")
+# ----------------- USER CONFIG (centralized) -----------------
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
+raw_file = config.raw_path("IEEE39bus1.raw")
+dyr_file = config.DYR_FILE
+txt_file = config.out_path("Ybus_Export.txt")
+mat_file = config.out_path("Y_all.mat")
 
 # Fault & clearing specification (IEEE 39 Bus)
-fault_bus = 29
-trip_line_from = 29
-trip_line_to = 26
-circuit_id = '1 '
+fault_bus = config.FAULT_BUS
+trip_line_from = config.TRIP_LINE_FROM
+trip_line_to = config.TRIP_LINE_TO
+circuit_id = config.CKT_ID
 
 gen_buses = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39]  # Generator bus numbers
 xd_prime = [0.025, 0.05, 0.045, 0.035, 0.089, 0.04, 0.044, 0.045, 0.045, 0.004]
@@ -64,7 +65,7 @@ load_adm = {
 # ------------------------------------------------
 
 def init_psse_and_read_case():
-    psspy.psseinit(200)
+    psspy.psseinit(config.PSSE_INIT)
     ierr = psspy.read(0, raw_file)
     if ierr != 0:
         raise RuntimeError(f"psspy.read returned error {ierr}")

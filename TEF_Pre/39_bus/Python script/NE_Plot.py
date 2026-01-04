@@ -6,21 +6,22 @@ import pandas as pd
 import scipy.io
 import numpy as np
 import os
+import config
 import re
 
 # ==============================================================================
 # 1. SETUP & CONFIGURATION
 # ==============================================================================
-work_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Python Script"
-result_dir = r"C:\Users\Acer\Desktop\final year project\energy function\TEF_Framework\TEF_Pre\39_bus\Matlab script"
-raw_file = os.path.join(work_dir, "IEEE39bus1.raw")
-dyr_file = os.path.join(work_dir, "ieee39buscls.dyr")
-out_file = os.path.join(result_dir, "IEEE39.out")
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
+raw_file = config.raw_path("IEEE39bus1.raw")
+dyr_file = config.DYR_FILE
+out_file = config.out_path("IEEE39.out")
 
 # Initialize PSS/E
 _i = psspy.getdefaultint()
 _f = psspy.getdefaultreal()
-psspy.psseinit(50)
+psspy.psseinit(config.PSSE_INIT)
 
 # ==============================================================================
 # 2. SIMULATION
@@ -29,14 +30,14 @@ print("--- Starting Simulation for IEEE 39-Bus ---")
 
 # Simulation Parameters
 
-fault_bus = 36
-from_bus = 36
-to_bus = 23
-line_id = '1 '
-fault_time = 1
-t_cl=0.0
-clear_time = fault_time+t_cl
-end_time = 5
+fault_bus = config.FAULT_BUS
+from_bus = config.TRIP_LINE_FROM
+to_bus = config.TRIP_LINE_TO
+line_id = config.CKT_ID
+fault_time = config.FAULT_TIME
+t_cl = 0.0
+clear_time = fault_time + t_cl
+end_time = config.DEFAULT_CLEARING
 
 # Load Case
 psspy.read(0, raw_file)
