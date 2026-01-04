@@ -69,6 +69,11 @@ E=Eeq_post;
     end
  end
 %% 3. DIRECT CUEP & MOD IDENTIFICATION (Using CCT Snapshot)
+% Replaces "Fth formulation", "Detect PEBS", and "Gradient Descent"
+
+% 1. DEFINE TIMING
+% CCT_TD is the DURATION (e.g., 0.22s). 
+% We need the ABSOLUTE TIME (e.g., 1.0 + 0.22 = 1.22s).
 fault_start_time = 1.0; 
 t_cct_absolute1 = fault_start_time + CCT_TD+0.2; %slightly higher than cct
 t_cct_absolute=fault_start_time + CCT_TD;
@@ -81,6 +86,8 @@ fprintf('Snapshot taken at simulation step: %d (t = %.4fs)\n', idx_cct, T(idx_cc
 
 theta_guess = theta(idx_cct, :)';
 [sorted_angles, sort_idx] = sort(theta_guess, 'descend');
+
+% 2. Extract the corresponding Speeds for those sorted generators
 % We assume 'w_tilde' is your speed variable in COI frame
 w_guess = w_tilde(idx_cct, :)'; 
 sorted_speeds = w_guess(sort_idx);
@@ -94,10 +101,14 @@ fprintf('Gen: %d | Ang: %.4f | Spd: %.4f\n', MOD_sort_data');
 
 % We calculate the Power Injection (Pi) first
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
+
+
+
+%%
 %%
 VPE = Calculate_PE(npts, g, Pi, C, D, th, ths);
 mod_indx=1;
-current_MOD_indices = MOD_sort_data(1:mod_indx,1); 
+current_MOD_indices = MOD_sort_data(1,1:mod_indx); 
 
 theta_u = Calculate_theta_u(mod_indx, MOD_sort_data, num_gen, ths, H);
 %% 3. ROBUST CUEP FINDING (Minimization of Mismatch)

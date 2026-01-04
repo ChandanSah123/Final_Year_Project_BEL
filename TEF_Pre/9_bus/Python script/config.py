@@ -21,14 +21,14 @@ TXT_FILE_YBUS = os.path.join(RESULT_DIR, "Ybus_Export.txt")
 # ==============================================================================
 FAULT_BUS = 7
 TRIP_LINE_FROM = 7
-TRIP_LINE_TO = 5
+TRIP_LINE_TO = 8
 LINE_ID = '1 '
 
 # Timing
 T_FAULT_START = 1.0
 # Single centralized clearing time used by all scripts
-T_CLEAR = 0.17
-T_END = T_FAULT_START + T_CLEAR+0.5
+T_CLEAR = 2
+T_END = T_FAULT_START + T_CLEAR
 # ==============================================================================
 # 3. SYSTEM DATA (For Y-Bus Calculation)
 # ==============================================================================

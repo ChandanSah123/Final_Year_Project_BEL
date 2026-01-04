@@ -32,9 +32,9 @@ to_bus = 26
 line_id = '1 '
 
 fault_time = 1.0
-t_cl = 0.156
+t_cl = 5
 clear_time = fault_time + t_cl
-end_time = fault_time + t_cl + 5
+end_time = fault_time + t_cl
 
 # --- Load Case ---
 psspy.read(0, raw_file)
@@ -89,7 +89,7 @@ psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
 psspy.run(0, clear_time, 0, 1, 0)
 
 print(f"Tripping Line {from_bus}-{to_bus}...")
-psspy.dist_branch_trip(from_bus, to_bus, line_id)
+#psspy.dist_branch_trip(from_bus, to_bus, line_id)
 psspy.dist_clear_fault(1)
 
 psspy.run(0, end_time, 0, 1, 0)

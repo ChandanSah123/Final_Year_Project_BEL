@@ -100,32 +100,66 @@ mod_indx=1;
 current_MOD_indices = MOD_sort_data(1:mod_indx,1); 
 
 theta_u = Calculate_theta_u(mod_indx, MOD_sort_data, num_gen, ths, H);
-%% 3. ROBUST CUEP FINDING (Minimization of Mismatch)
+%% code for optimizaton of theta_u goes here to obtain theta_cuep_mod
 
-% 1. Define the Objective Function
-% This function calculates 'fsum' (total mismatch) for any given theta vector.
-% We use the POST-FAULT network parameters (C, D, Pi) because we are looking
-% for the equilibrium of the Post-Fault system.
-ang=theta_u;
-mismatch_func = @(ang) Calculate_Fsum(ang, num_gen, Pi, C, D, H);
-options = optimset('Display', 'iter', 'TolX', 1e-6, 'TolFun', 1e-6, 'MaxFunEvals', 5000);
+% 1. Setup Inputs (Sanitization)
+% Ensure inputs match the dimensions required by SEPfunction (Row Vectors)
+Pm_row = Pm(1, 1:num_gen);   % 1x10 Row Vector
+E_row  = Eeq_post.';         % 1x10 Row Vector (Assuming Eeq_post is column)
+H_col  = H(:);               % Ensure Inertia is a Column Vector for Aeq calculation
 
+% 2. Center Initial Guess
+% Ensure theta_u starts strictly at COI = 0
+x0 = theta_u;
 
-% 3. Run Optimization (fminsearch)
-[theta_cuep_mod, min_fsum, exitflag] = fminsearch(mismatch_func, theta_u, options);
+% 3. Configure Optimization Constraints
+% CRITICAL FIX: Add Linear Equality Constraint for COI (Sum(H*theta) = 0)
+% This removes the singularity/rotational invariance that was confusing the solver.
+Aeq = H_col';       % Linear constraint: [H1 H2 ... Hn] * [th1; th2; ...]
+beq = 0;            % Result must equal 0
 
-% 4. Validate the Result
-if min_fsum < 0.1
-    fprintf('SUCCESS: Found valid CUEP! (Total Mismatch = %.4f)\n', min_fsum);
-    
-    % Recalculate Critical Energy using this precise CUEP
-    Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
+% 4. Optimization Options
+% Objective is zero (Feasibility Problem)
+obj_fun = @(x) 0; 
 
+% Bounds: Loose bounds to allow finding the saddle point
+lb = -2*pi * ones(g, 1); 
+ub =  2*pi * ones(g, 1);
+A = []; b = []; 
+
+% Solver Settings: 'sqp' is often better for singular/constrained problems,
+% but 'interior-point' with Aeq set is very robust.
+opts = optimset('Algorithm', 'interior-point', ...
+                'Display', 'iter', ...        % Keep 'iter' to monitor convergence
+                'MaxFunEvals', 50000, ...
+                'MaxIter', 2000, ...
+                'TolCon', 1e-9, ...           % Tighter tolerance for precision
+                'TolX', 1e-9, ...
+                'TolFun', 1e-9);
+
+% 5. Constraint Function Handle
+nonlin_con = @(x) SEPfunction(x, Pm_row, E_row, C, D, H, Y1);
+
+% 6. Run Optimization
+fprintf('Solving for CUEP with COI Constraint...\n');
+[x_sol, fval, exitflag, output] = fmincon(obj_fun, x0, A, b, Aeq, beq, lb, ub, nonlin_con, opts);
+
+% 7. Post-Process
+% Since we used Aeq, the result is ALREADY in the COI frame.
+% We double-check just to be safe (removes machine precision noise).
+theta_cuep_mod = x_sol - (sum(x_sol .* H_col) / sum(H_col));
+
+% 8. Convergence Check
+if exitflag <= 0
+    warning('CUEP Optimization did not converge. ExitFlag: %d', exitflag);
+    disp(output.message);
 else
-    fprintf('WARNING: Optimizer stopped but mismatch is high (%.4f).\n', min_fsum);
-    fprintf('Result might not be a true equilibrium point.\n');
-    Vcr_candidate = Calculate_PE_single_point(theta_u, ths, Pi, C, D, g);
+    [~, mism] = nonlin_con(theta_cuep_mod);
+    fprintf('CUEP Found. Max Power Mismatch: %.2e p.u.\n', max(abs(mism)));
+    fprintf('Initial Guess Norm: %.4f | Final Solution Norm: %.4f\n', norm(x0), norm(theta_cuep_mod));
 end
+%%
+Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
 % ... [Rest of your code] ...
 %theta_cuep_mod = [-0.7451 2.3909 0.6487]';
 
