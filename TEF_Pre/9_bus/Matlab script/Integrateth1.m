@@ -1,43 +1,32 @@
-function dy = Integrateth1(t, y)
-    %% 1. Retrieve System Parameters
-    % Define these variables or load them from your workspace/globals
-    % global Y1;  % Un-comment if using global
+function dy = Integrateth(~, y, Pi, C, D, H)
+    % INTEGRATETH Generic gradient calculation for any number of machines
+    % Solves for the gradient: f_i(theta) = P_acc_i - (M_i/M_tot) * P_COI
     
-    % PLACEHOLDERS: Add your specific data here
-    % H  = [ ... ];  % Inertia Constants
-    % E  = [ ... ];  % Internal Voltages
-    % Pm = [ ... ];  % Mechanical Power
-    % Y1 = [ ... ];  % Reduced Admittance Matrix
-
-    %% 2. Prepare Vectors
-    % Ensure all vectors are column vectors (N x 1) for matrix math
-    y  = y(:);   % Generator Angles (theta)
-    E  = E(:);   % Voltage Magnitudes
-    H  = H(:);   % Inertia
-    Pm = Pm(:);  % Mechanical Power
-
-    %% 3. Vectorized Electrical Power Calculation
-    % Instead of looping i and j, we use matrix operations.
-    % V = E * e^(j * theta)
-    V = E .* exp(1j * y); 
+    g = length(y); % Detect system size (e.g., 10)
     
-    % Current Injections: I = Y_bus * V
-    I = Y1 * V;
+    % 1. Calculate Electrical Power (Pe) & Accelerating Power (P_acc)
+    % P_acc = Pi - Pe
+    P_acc = zeros(g, 1);
     
-    % Electrical Power: Pe = Real(V * conj(I))
-    Pe = real(V .* conj(I));
-
-    %% 4. Calculate Accelerating Power (Local Frame)
-    % P_acc = Mechanical Power - Electrical Power
-    P_acc = Pm - Pe;
-
-    %% 5. Transform to COI Frame (Center of Inertia)
-    % Formula: f_i = P_acc_i - (H_i / H_total) * sum(P_acc_all)
+    for i = 1:g
+        Pe_i = 0;
+        for j = 1:g
+            if i ~= j
+                theta_diff = y(i) - y(j);
+                % Pe = sum( C*sin(dij) + D*cos(dij) )
+                Pe_i = Pe_i + C(i,j)*sin(theta_diff) + D(i,j)*cos(theta_diff);
+            end
+        end
+        P_acc(i) = Pi(i) - Pe_i;
+    end
     
-    Total_H     = sum(H);
-    Total_P_acc = sum(P_acc);
+    % 2. Calculate P_COI (Total System Accelerating Power)
+    % Sum of all individual accelerating powers
+    P_COI_total = sum(P_acc);
     
-    % Subtract the system-wide average acceleration weighted by inertia
-    dy = P_acc - (H / Total_H) * Total_P_acc;
-
+    % 3. Calculate Gradient in COI Frame
+    % dy = P_acc_i - (H_i / H_sum) * P_COI_total
+    H_sum = sum(H);
+    dy = P_acc - (H / H_sum) * P_COI_total;
+    
 end
