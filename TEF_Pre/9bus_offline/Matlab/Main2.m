@@ -3,7 +3,8 @@ clc; clear; close all;
 global Yint_post;
 load('data1.mat'); 
 load('Y_all.mat');
-load('CCT_TimeDomain.mat', 'CCT_TD')
+load('CCT_TimeDomain.mat', 'CCT_TD');
+load('Fault_Info.mat');
 %CCT_TD=CCT_TD+1;
 T = data(:,16);
 npts=length(T);
@@ -189,7 +190,7 @@ KE_total = sum(KE_raw);
 KE_Signature = KE_raw / KE_total; 
 
 % 2. Define the Entry Structure
-new_entry.Fault_Location = 'Bus 9'; % Adjust this based on your simulation setup
+new_entry.Fault_Location =Fault_Location; % Adjust this based on your simulation setup
 new_entry.KE_Signature   = KE_Signature; % 3x1 Vector (The "Fingerprint")
 new_entry.MOD_Generators = best_MOD_group;
 new_entry.Critical_Energy= best_Vcr;
