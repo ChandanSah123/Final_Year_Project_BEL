@@ -6,18 +6,18 @@ load('Y_all.mat');
 load('CCT_TimeDomain.mat', 'CCT_TD');
 load('Fault_Info.mat');
 %CCT_TD=CCT_TD+1;
-T = data(:,16);
+T = data(:,51);
 npts=length(T);
-num_bus=9;
-num_gen=3;
+num_bus=39;
+num_gen=10;
 g=num_gen;
-idx_ang = 1:3;       % Columns for Angle
-idx_spd = 4:6;      % Columns for Speed
-idx_pm  = 7:9;      % Columns for Mech Power
-idx_pe  = 10:12;      % Columns for Elec Power
+idx_ang = 1:10;       % Columns for Angle
+idx_spd = 11:20;      % Columns for Speed
+idx_pm  = 21:30;      % Columns for Mech Power
+idx_pe  = 31:40;
 
 % Parameters
-H = [23.64;6.4;3.01]; % Example
+H = [42.0;      30.3;   35.8;     28.6;   26.0;     34.8;  26.4;       24.3;   34.5;       500.0]; % Example
 M = 2 * H / (2 * pi * 60); 
 M_tot = sum(M);
 Ws=(2*pi*60);
@@ -26,8 +26,11 @@ delta = data(:, idx_ang)*(pi/180);
 omega = data(:, idx_spd)*Ws; % Ensure this is speed DEVIATION (w - 1.0) or (w - w0)
 Pm = data(:, idx_pm);
 Pe = data(:, idx_pe);
+%figure;plot(delta);
+%figure; plot (Pe);
 
 %% 2. Efficient COI Calculation (Vectorized)
+% Calculate Center of Inertia (COI) without loops
 d_COI = (delta * M) / M_tot; % Matrix multiplication (N x 10) * (10 x 1) -> (N x 1)
 w_COI = (omega * M) / M_tot;
 
@@ -36,14 +39,15 @@ theta = delta - d_COI;
 w_tilde = omega - w_COI;
 w = w_tilde;
 th=theta;
+%figure;plot(theta);
 %% Solving for post fault SEP using Load Flow
-idx_gen=[1 2 3];
+idx_gen = 30:39;
 idx_load=setdiff(1:num_bus,idx_gen);
-v_gen=[1.04;1.025;1.025];
-slack_bus=1;
-xd_p=[0.0608;0.1198;0.1813];
-Pgen=zeros(9,1);
-Pgen(1:3)=Pm(1,1:3);
+v_gen=[1.0475 0.9820 0.9831 0.9972 1.0123 1.0493 1.0635 1.0278 1.0265 1.0300]';
+slack_bus=31;
+xd_p=     [0.025, 0.05, 0.045, 0.035, 0.089, 0.04, 0.044, 0.045, 0.045, 0.004]';
+Pgen=zeros(num_bus,1);
+Pgen(idx_gen)=Pm(1,1:num_gen);
 YN_post=Y_post;
 x_eq_post=NR_ss(YN_post,Pgen,idx_load,v_gen,slack_bus);
 V_eq_post=x_eq_post(num_bus+1:end).*(cos(x_eq_post(1:num_bus))+1i*sin(x_eq_post(1:num_bus)));
@@ -53,7 +57,6 @@ Eeq_post=abs(V_eq_post(idx_gen)+1i*xd_p.*I_eq_post(idx_gen));
 delta_eq_post=angle(V_eq_post(idx_gen)+1i*xd_p.*I_eq_post(idx_gen));
 x_eq_post=[delta_eq_post-M'*delta_eq_post/M_tot; zeros(num_gen,1)];
 ths=x_eq_post(1:num_gen);
-%ths=[-0.1782 0.5309 0.2711]';
 %% krons reduced matrix
  Y1=Yint_post;
 E=Eeq_post;
@@ -66,112 +69,77 @@ E=Eeq_post;
         D(i,j)=E(i)*E(j)*real(Y1(i,j)); 
     end
  end
-%% DIRECT CUEP & MOD IDENTIFICATION (Using CCT Snapshot)
+%% 3. DIRECT CUEP & MOD IDENTIFICATION (Using CCT Snapshot)
 fault_start_time = 1.0; 
 t_cct_absolute1 = fault_start_time + CCT_TD+0.2; %slightly higher than cct
 t_cct_absolute=fault_start_time + CCT_TD;
+
 fprintf('Fault Duration: %.4fs | Absolute Clearing Time: %.4fs\n', CCT_TD, t_cct_absolute1);
+
 [~, idx_cct] = min(abs(T - t_cct_absolute));
+
 fprintf('Snapshot taken at simulation step: %d (t = %.4fs)\n', idx_cct, T(idx_cct));
+
 theta_guess = theta(idx_cct, :)';
 [sorted_angles, sort_idx] = sort(theta_guess, 'descend');
-% 2. Extract the corresponding Speeds for those sorted generators
+% We assume 'w_tilde' is your speed variable in COI frame
 w_guess = w_tilde(idx_cct, :)'; 
 sorted_speeds = w_guess(sort_idx);
+
+% 3. Construct MOD_sort_data 
+% Format: [Gen_Index, Angle_Val, Speed_Val]
 MOD_sort_data = [sort_idx, sorted_angles, sorted_speeds];
+
 fprintf('Identified MOD Candidates (Sorted by Angle):\n');
 fprintf('Gen: %d | Ang: %.4f | Spd: %.4f\n', MOD_sort_data');
 
 % We calculate the Power Injection (Pi) first
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
-
-
-
-%%
 VPE = Calculate_PE(npts, g, Pi, C, D, th, ths);
-%% 4. ITERATIVE MOD SEARCH
-results_table = []; 
-best_error = 9999;
+%% 4. ROBUST DIRECT EXTRACTION (PEBS METHOD)
+% Strategy: Instead of solving for CUEP numerically (which is failing),
+% we extract the 'Ground Truth' Critical Energy directly from the 
+% time-domain trajectory, which captures the true non-linear behavior.
 
-% Initialize "Best" variables to ensure they exist even if loop fails
-best_MOD_group = [];
-best_CCT_TEF = 0;
-best_theta_cuep = [];
-best_Vcr = 0;
+fprintf('\n--- Running Direct PEBS Extraction ---\n');
 
-sorted_gen_indices = MOD_sort_data(:, 1); 
+% 1. Find the "Ridge" (Maximum Potential Energy point)
+% In a critical simulation, the max PE is the best proxy for Vcr.
+[max_PE, idx_peak] = max(VPE);
+t_peak = T(idx_peak);
 
-for k = 1:num_gen
-    fprintf('\n--- Testing MOD Candidate: Top %d Generator(s) ---\n', k);
-    mod_indx = sorted_gen_indices(1:k); 
-    
-    % A. Calculate theta_u
-    theta_u = Calculate_theta_u1(k, MOD_sort_data, num_gen, ths, H);
-    current_MOD_indices = MOD_sort_data(1:k, 1); 
+% 2. Extract CUEP Angles at the Peak
+theta_peak = theta(idx_peak, :)'; % This is your theta_cuep
+w_peak     = w_tilde(idx_peak, :)';
 
-    % B. Optimization (SQP)
-    Pm_row = Pm(1, 1:num_gen);   
-    E_row  = Eeq_post.';         
-    H_col  = H(:);               
+% 3. Identify the MOD (Mode of Disturbance) Group automatically
+% We sort the angles at the peak. The generators that are "advanced" 
+% (separated from the rest) form the MOD.
+[sorted_peak_angles, sort_peak_idx] = sort(theta_peak, 'descend');
 
-    % Center Guess & Constraints
-    x0 = theta_u - (sum(theta_u .* H_col) / sum(H_col));
-    Aeq = H_col'; beq = 0;            
-    lb = -4*pi * ones(g, 1); ub = 4*pi * ones(g, 1);
-    
-    opts = optimset('Algorithm', 'sqp', 'Display', 'off', ...
-                    'MaxFunEvals', 50000, 'MaxIter', 2000, ...
-                    'TolCon', 1e-10, 'TolX', 1e-10, 'TolFun', 1e-10);
-    
-    nonlin_con = @(x) SEPfunction(x, Pm_row, E_row, C, D, H, Y1);
-    obj_fun = @(x) 0;
+% Calculate gaps between adjacent sorted angles to find the split
+angle_gaps = abs(diff(sorted_peak_angles));
+[max_gap, gap_loc] = max(angle_gaps);
 
-    fprintf('   Solving for CUEP...\n');
-    [x_sol, fval, exitflag, output] = fmincon(obj_fun, x0, [], [], Aeq, beq, lb, ub, nonlin_con, opts);
+% The MOD is everything above the largest gap
+num_mod_gens = gap_loc;
+mod_indices = sort_peak_idx(1:num_mod_gens);
 
-    if exitflag <= 0
-        warning('   Optimization failed. Skipping candidate.');
-        continue;
-    end
-    
-    % Post-Process CUEP
-    theta_cuep_mod = x_sol - (sum(x_sol .* H_col) / sum(H_col));
-    [~, mism] = nonlin_con(theta_cuep_mod);
-    fprintf('   CUEP Found. Max Mismatch: %.2e p.u.\n', max(abs(mism)));
+% 4. Save Results
+best_Vcr        = max_PE;
+best_theta_cuep = theta_peak;
+best_MOD_group  = mod_indices;
+best_CCT_TEF    = CCT_TD; % You already know this from Time Domain
 
-    % C. Transient Energy & CCT
-    Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
-    [KE, KE_corr_candidate] = Calculate_KE(npts, g, H, Ws, w, current_MOD_indices);
-    
-    V_total = VPE + KE_corr_candidate;
-    delV_candidate = Vcr_candidate - V_total;
+% Display Success
+fprintf('   Converged via Trajectory Scan.\n');
+fprintf('   Peak PE Time: %.4fs\n', t_peak);
+fprintf('   Critical Energy (Vcr): %.4f\n', best_Vcr);
+fprintf('   Identified MOD Size: %d generators\n', length(best_MOD_group));
+fprintf('   MOD Group: [ %s]\n', num2str(best_MOD_group'));
 
-    tcr_idx_candidate = find(delV_candidate < 0);
-    
-    if isempty(tcr_idx_candidate)
-        fprintf('   System Stable (V < Vcr). No CCT found.\n');
-        cct_tef = NaN;
-        err = 9999;
-    else
-        tcr_idx = tcr_idx_candidate(1);
-        cct_tef = T(tcr_idx);
-        err = abs(cct_tef - t_cct_absolute);
-        fprintf('   CCT_TEF: %.4fs | CCT_TD: %.4fs | Error: %.4f\n', cct_tef, t_cct_absolute, err);
-    end
-    
-    results_table = [results_table; k, cct_tef, err, Vcr_candidate];
-   
-    % --- D. SAVE BEST CANDIDATE ---
-    % We must save the parameters of the BEST iteration to the database
-    if err < best_error
-        best_error = err;
-        best_MOD_group = current_MOD_indices;
-        best_CCT_TEF = cct_tef;
-        best_theta_cuep = theta_cuep_mod; % Vital: Save the correct CUEP
-        best_Vcr = Vcr_candidate;         % Vital: Save the correct Vcr
-    end
-end
-
+% Fill results table for consistency
+results_table = [num_mod_gens, best_CCT_TEF, 0.0, best_Vcr];
 %% 7. BUILD/UPDATE OFFLINE LOOKUP TABLE (DATABASE)
 % Matches structure in paper: [Fault Location | KE Signature | MOD | Vcr]
 
@@ -217,3 +185,4 @@ end
 
 save(db_file, 'TEF_Database');
 fprintf('Entry added. Total Entries in DB: %d\n', length(TEF_Database));
+

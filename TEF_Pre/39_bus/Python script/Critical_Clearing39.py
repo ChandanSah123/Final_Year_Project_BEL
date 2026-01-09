@@ -27,14 +27,15 @@ def run_simulation(clearing_duration):
     Returns: (is_stable, max_spread_found)
     """
     # --- Simulation Parameters ---
-    fault_bus = 29
-    from_bus = 29
-    to_bus = 26
-    line_id = '1 '
-    
-    t_fault_start = 1.0
+    fault_bus = config.FAULT_BUS
+    from_bus = config.TRIP_LINE_FROM
+    to_bus = config.TRIP_LINE_TO
+    line_id = config.CKT_ID
+
+    t_fault_start = config.FAULT_TIME
     t_clear = t_fault_start + clearing_duration
-    t_end = 4.0 
+    # run a short time after clearing to observe post-fault behaviour
+    t_end = t_clear + 1.0
 
     # --- Clean Previous Run Output ---
     if os.path.exists(out_file):
@@ -52,7 +53,7 @@ def run_simulation(clearing_duration):
     psspy.fnsl([0,0,0,1,1,0,99,0])
 
     # --- Convert Generators ---
-    psspy.cong(0) 
+    psspy.cong(0)
     psspy.conl(0, 1, 1, [0, 0], [0.0, 100.0, 0.0, 100.0])
     psspy.conl(0, 1, 2, [0, 0], [0.0, 100.0, 0.0, 100.0])
     psspy.conl(0, 1, 3, [0, 0], [0.0, 100.0, 0.0, 100.0])
@@ -83,7 +84,7 @@ def run_simulation(clearing_duration):
     psspy.run(0, t_clear, 0, 1, 0)
 
     # Clear Fault
-   # psspy.dist_branch_trip(from_bus, to_bus, line_id)
+    #psspy.dist_branch_trip(from_bus, to_bus, line_id)
     psspy.dist_clear_fault(1)
     psspy.run(0, t_end, 0, 1, 0)
 

@@ -17,14 +17,13 @@ PSSE_INIT = 50
 DYNAMICS_STEP = 0.001
 
 # Fault / scenario defaults (centralized)
-FAULT_BUS = 29
-TRIP_LINE_FROM = 29
-TRIP_LINE_TO = 26
+FAULT_BUS = 1
+TRIP_LINE_FROM = 1
+TRIP_LINE_TO = 2
 CKT_ID = '1 '
 FAULT_TIME = 1.0
 # Default clearing time used by some scripts (can be overridden per-run)
-DEFAULT_CLEARING = 5.0
-
+DEFAULT_CLEARING = 0.32
 # Generic helpers
 def out_path(filename):
     return os.path.join(RESULT_DIR, filename)

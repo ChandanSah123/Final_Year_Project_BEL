@@ -3,7 +3,8 @@ clc; clear; close all;
 global Yint_post;
 load('data1.mat'); 
 load('Y_all.mat');
-load('CCT_TimeDomain.mat', 'CCT_TD')
+load('CCT_TimeDomain.mat', 'CCT_TD');
+load('Fault_Info.mat');
 %CCT_TD=CCT_TD+1;
 T = data(:,51);
 npts=length(T);
@@ -94,52 +95,171 @@ fprintf('Gen: %d | Ang: %.4f | Spd: %.4f\n', MOD_sort_data');
 
 % We calculate the Power Injection (Pi) first
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
-%%
 VPE = Calculate_PE(npts, g, Pi, C, D, th, ths);
-mod_indx=1;
-current_MOD_indices = MOD_sort_data(1:mod_indx,1); 
+%% 4. ITERATIVE MOD SEARCH
+results_table = []; 
+best_error = 9999;
 
-theta_u = Calculate_theta_u(mod_indx, MOD_sort_data, num_gen, ths, H);
-%% 3. ROBUST CUEP FINDING (Minimization of Mismatch)
+% Initialize "Best" variables
+best_MOD_group = [];
+best_CCT_TEF = 0;
+best_theta_cuep = [];
+best_Vcr = 0;
 
-% 1. Define the Objective Function
-% This function calculates 'fsum' (total mismatch) for any given theta vector.
-% We use the POST-FAULT network parameters (C, D, Pi) because we are looking
-% for the equilibrium of the Post-Fault system.
-ang=theta_u;
-mismatch_func = @(ang) Calculate_Fsum(ang, num_gen, Pi, C, D, H);
-options = optimset('Display', 'iter', 'TolX', 1e-6, 'TolFun', 1e-6, 'MaxFunEvals', 5000);
+sorted_gen_indices = MOD_sort_data(:, 1); 
 
-
-% 3. Run Optimization (fminsearch)
-[theta_cuep_mod, min_fsum, exitflag] = fminsearch(mismatch_func, theta_u, options);
-
-% 4. Validate the Result
-if min_fsum < 0.1
-    fprintf('SUCCESS: Found valid CUEP! (Total Mismatch = %.4f)\n', min_fsum);
+for k = 1:num_gen
+    fprintf('\n--- Testing MOD Candidate: Top %d Generator(s) ---\n', k);
     
-    % Recalculate Critical Energy using this precise CUEP
+    % A. Calculate theta_u (Corner Point)
+    theta_u = Calculate_theta_u(k, MOD_sort_data, num_gen, ths, H);
+    current_MOD_indices = MOD_sort_data(1:k, 1); 
+    
+    % 0. Safety Check
+    if k == num_gen
+        fprintf('   Skipping k=%d (Full system cannot separate).\n', k);
+        continue; 
+    end
+
+    % B. Optimization: Robust CUEP Solver (Layered Approach)
+    
+    % 1. Define Inputs
+    Pm_vec = Pm(1, 1:num_gen)';   
+    E_vec  = Eeq_post;            
+    M_vec  = M;                   
+    
+    % 2. Function Handle (Anchored Mismatch)
+    cuep_fun = @(th) cuep_mismatch_anchored(th, Pm_vec, E_vec, Y1, M_vec, M_tot);
+
+    % 3. STRATEGY 1: lsqnonlin (Fast, Gradient-based)
+    options_lsq = optimoptions('lsqnonlin', 'Algorithm', 'levenberg-marquardt', ...
+                               'Display', 'off', 'FunctionTolerance', 1e-6, ...
+                               'StepTolerance', 1e-6, 'MaxFunctionEvaluations', 1000);
+                           
+    % Start from Corner Point (theta_u)
+    fprintf('   Solving CUEP (Level 1: lsqnonlin)... ');
+    [theta_sol, resnorm, ~, exitflag] = lsqnonlin(cuep_fun, theta_u, [], [], options_lsq);
+
+    % 4. STRATEGY 2: fmincon SQP (The "Nuclear Option")
+    % If Strategy 1 failed (high residual), we minimize the error square sum directly.
+    if resnorm > 0.1
+        fprintf('\n      > Level 1 stuck (Res: %.2f). Engaging Level 2 (fmincon SQP)...', resnorm);
+        
+        % Objective: Minimize sum of squared mismatches
+        obj_fun = @(th) sum(cuep_mismatch_anchored(th, Pm_vec, E_vec, Y1, M_vec, M_tot).^2);
+        
+        % Constraints: Bound angles within +/- 60 degrees of the corner point to prevent drift
+        lb = theta_u - pi/3;
+        ub = theta_u + pi/3;
+        
+        options_sqp = optimoptions('fmincon', 'Algorithm', 'sqp', ...
+                                   'Display', 'off', 'MaxFunctionEvaluations', 2000, ...
+                                   'OptimalityTolerance', 1e-6);
+        
+        try
+            [theta_sqp, fval_sqp] = fmincon(obj_fun, theta_u, [], [], [], [], lb, ub, [], options_sqp);
+            
+            % If SQP found a better point, take it
+            if fval_sqp < resnorm
+                theta_sol = theta_sqp;
+                resnorm = fval_sqp;
+            end
+        catch
+            fprintf(' (Optimization Error)');
+        end
+    end
+    
+    % 5. Final Processing & SKIPPING LOGIC
+    % Re-center results to COI one last time to be precise
+    d_offset = sum(M_vec .* theta_sol) / M_tot;
+    theta_cuep_mod = theta_sol - d_offset;
+    
+    % Final Residual Check (Power mismatch only)
+    final_mismatch_vec = cuep_mismatch_anchored(theta_cuep_mod, Pm_vec, E_vec, Y1, M_vec, M_tot);
+    real_residual = sum(abs(final_mismatch_vec(1:num_gen))); 
+    
+    if real_residual < 0.5
+        fprintf(' Converged. Res: %.2e\n', real_residual);
+    else
+        % --- THE MODIFICATION IS HERE ---
+        fprintf(' \n      > Solvers Failed (Res: %.2e). Skipping this MOD.\n', real_residual);
+        continue; % Jump to next 'k' immediately, skipping Vcr calculation
+    end
+    
+    % C. Transient Energy & CCT (Only runs if solver converged)
     Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
-
-else
-    fprintf('WARNING: Optimizer stopped but mismatch is high (%.4f).\n', min_fsum);
-    fprintf('Result might not be a true equilibrium point.\n');
-    Vcr_candidate = Calculate_PE_single_point(theta_u, ths, Pi, C, D, g);
+    [KE, KE_corr_candidate] = Calculate_KE(npts, g, H, Ws, w, current_MOD_indices);
+    
+    V_total = VPE + KE_corr_candidate;
+    delV_candidate = Vcr_candidate - V_total;
+    tcr_idx_candidate = find(delV_candidate < 0);
+    
+    if isempty(tcr_idx_candidate)
+        fprintf('   System Stable (V < Vcr). No CCT found.\n');
+        cct_tef = NaN;
+        err = 9999;
+    else
+        tcr_idx = tcr_idx_candidate(1);
+        cct_tef = T(tcr_idx);
+        err = abs(cct_tef - t_cct_absolute);
+        fprintf('   CCT_TEF: %.4fs | CCT_TD: %.4fs | Error: %.4f\n', cct_tef, t_cct_absolute, err);
+    end
+    
+    results_table = [results_table; k, cct_tef, err, Vcr_candidate];
+   
+    % D. SAVE BEST CANDIDATE
+    if err < best_error
+        best_error = err;
+        best_MOD_group = current_MOD_indices;
+        best_CCT_TEF = cct_tef;
+        best_theta_cuep = theta_cuep_mod; 
+        best_Vcr = Vcr_candidate;        
+    end
 end
-% ... [Rest of your code] ...
-%theta_cuep_mod = [-0.7451 2.3909 0.6487]';
 
-%Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
-%Vcr_candidate = Calculate_PE(1, g, Pi, C, D, theta_u, ths);
-[KE, KE_corr_candidate] = Calculate_KE(npts, g, H, Ws, w, current_MOD_indices);
-V_total = VPE + KE_corr_candidate;
-delV_candidate = Vcr_candidate - V_total;
-tcr_idx_candidate=find(delV_candidate<0);
-tcr_idx=tcr_idx_candidate(1);
-tcr=T(tcr_idx);
-display(theta_u);
-display(theta_cuep_mod);
-display(Vcr_candidate);
-display(tcr);
-display(Vcr_candidate);
-figure; plot(delV_candidate);
+%% 7. BUILD/UPDATE OFFLINE LOOKUP TABLE (DATABASE)
+% Matches structure in paper: [Fault Location | KE Signature | MOD | Vcr]
+
+db_file = 'Offline_Database.mat';
+
+% 1. Calculate KE Signature at Fault Clearing Time
+% The signature is the Normalized Kinetic Energy of each machine at t_clear
+t_clearing_time = fault_start_time + CCT_TD; 
+[~, idx_clear] = min(abs(T - t_clearing_time));
+
+w_at_clearing = w(idx_clear, :)'; % Speed deviation at clearing
+KE_raw = 0.5 * M .* (w_at_clearing.^2); % Individual KE
+KE_total = sum(KE_raw);
+
+% Normalized Signature (This is what you match against in real-time)
+KE_Signature = KE_raw / KE_total; 
+
+% 2. Define the Entry Structure
+new_entry.Fault_Location =Tripped_Line; % Adjust this based on your simulation setup
+new_entry.KE_Signature   = KE_Signature; % 3x1 Vector (The "Fingerprint")
+new_entry.MOD_Generators = best_MOD_group;
+new_entry.Critical_Energy= best_Vcr;
+new_entry.CUEP_Angles    = best_theta_cuep;
+new_entry.CCT_TEF        = best_CCT_TEF;
+
+% 3. Display Data to be Saved
+fprintf('\n--- Saving Best Result to Database ---\n');
+fprintf('Fault Loc: %s\n', new_entry.Fault_Location);
+fprintf('Best MOD: Gen [ %s]\n', num2str(best_MOD_group'));
+fprintf('KE Signature: [ %.4f  %.4f  %.4f ]\n', KE_Signature');
+fprintf('Critical Energy (Vcr): %.4f\n', best_Vcr);
+
+% 4. Load & Append
+if exist(db_file, 'file')
+    load(db_file, 'TEF_Database');
+    
+    % Optional: Check for duplicates (Simple check based on Fault Loc)
+    % Ideally, you would check if this specific case already exists.
+    TEF_Database = [TEF_Database; new_entry];
+else
+    TEF_Database = new_entry;
+end
+
+save(db_file, 'TEF_Database');
+fprintf('Entry added. Total Entries in DB: %d\n', length(TEF_Database));
+

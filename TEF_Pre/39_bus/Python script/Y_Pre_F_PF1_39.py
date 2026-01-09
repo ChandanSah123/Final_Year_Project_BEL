@@ -20,6 +20,7 @@ raw_file = config.raw_path("IEEE39bus1.raw")
 dyr_file = config.DYR_FILE
 txt_file = config.out_path("Ybus_Export.txt")
 mat_file = config.out_path("Y_all.mat")
+mat_info = os.path.join(config.RESULT_DIR, "Fault_Info.mat")
 
 # Fault & clearing specification (IEEE 39 Bus)
 fault_bus = config.FAULT_BUS
@@ -378,10 +379,17 @@ if __name__ == "__main__":
     mdict = {
         "Yi_pre": Y_pre,
         "Y_fault": Y_fault,
-        "Y_post": Y_post1,
+        "Y_post": Y_pre,
         "Yint_pre": Yint_pre,
         "Yint_fault": Yint_fault,
-        "Yint_post": Yint_post
+        "Yint_post": Yint_pre
     }
     sio.savemat(mat_file, mdict)
+     
+    sio.savemat(mat_info, {
+        "Fault_Type": "Line_Fault",
+        "Fault_Location": fault_bus,
+        "Tripped_Line": [trip_line_from, trip_line_to],
+        "Fault_Impedance": 0
+    })
     print("SUCCESS: Matrices saved.")
