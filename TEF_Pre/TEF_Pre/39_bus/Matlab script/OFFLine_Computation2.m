@@ -26,9 +26,6 @@ delta = data(:, idx_ang)*(pi/180);
 omega = data(:, idx_spd)*Ws; % Ensure this is speed DEVIATION (w - 1.0) or (w - w0)
 Pm = data(:, idx_pm);
 Pe = data(:, idx_pe);
-%figure;plot(delta);
-%figure; plot (Pe);
-
 %% 2. Efficient COI Calculation (Vectorized)
 % Calculate Center of Inertia (COI) without loops
 d_COI = (delta * M) / M_tot; % Matrix multiplication (N x 10) * (10 x 1) -> (N x 1)
@@ -41,14 +38,10 @@ w = w_tilde;
 th=theta;
 %figure;plot(theta);
 %% Solving for post fault SEP using Load Flow
-idx_gen=[1 2 3 4 5 6 7 8 9 10];
-idx_load=setdiff(1:num_bus,idx_gen);
 Pgen=zeros(num_gen,1);
 Pgen(1:num_gen)=Pm(1,1:num_gen);
-YN_post=Y_post;
 %% krons reduced matrix
 Y1=Yint_post;
- %E=[1.054 1.050 1.017];
  C=zeros(g,g);
  D=zeros(g,g);
  for i=1:g
@@ -60,7 +53,6 @@ Y1=Yint_post;
  Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
  %% Alternative method to find the stable equilibrium point
 Pm = Pm(1, 1:num_gen);   % 1x3 Row Vector
-%E = Eeq_post.';         % 1x3 Row Vector
 H = H(:); 
 obj_fun = @(x) 1;
 x0 = theta(1000,:);
@@ -87,10 +79,10 @@ fprintf('Solving for CUEP with COI Constraint...\n');
 ths = x_sol1-(sum(x_sol1(:) .* H(:)) / sum(H));
 %% DIRECT CUEP & MOD IDENTIFICATION (Using CCT Snapshot)
 fault_start_time = 1.0; 
-t_cct_absolute1 = fault_start_time + CCT_TD+0.2; %slightly higher than cct
+t_cct_absolute1 = fault_start_time + CCT_TD+0.1; %slightly higher than cct
 t_cct_absolute=fault_start_time + CCT_TD;
 fprintf('Fault Duration: %.4fs | Absolute Clearing Time: %.4fs\n', CCT_TD, t_cct_absolute1);
-[~, idx_cct] = min(abs(T - t_cct_absolute));
+[~, idx_cct] = min(abs(T - t_cct_absolute1));
 fprintf('Snapshot taken at simulation step: %d (t = %.4fs)\n', idx_cct, T(idx_cct));
 theta_guess = theta(idx_cct, :)';
 [sorted_angles, sort_idx] = sort(theta_guess, 'descend');
@@ -220,7 +212,7 @@ db_file = 'Offline_Database.mat';
 
 % 1. Calculate KE Signature at Fault Clearing Time
 % The signature is the Normalized Kinetic Energy of each machine at t_clear
-t_clearing_time = fault_start_time + CCT_TD; 
+t_clearing_time = fault_start_time + 0.1; 
 [~, idx_clear] = min(abs(T - t_clearing_time));
 
 w_at_clearing = w(idx_clear, :)'; % Speed deviation at clearing
@@ -244,9 +236,6 @@ fprintf('Critical Energy (Vcr): %.4f\n', best_Vcr);
 % 4. Load & Append
 if exist(db_file, 'file')
     load(db_file, 'TEF_Database');
-    
-    % Optional: Check for duplicates (Simple check based on Fault Loc)
-    % Ideally, you would check if this specific case already exists.
     TEF_Database = [TEF_Database; new_entry];
 else
     TEF_Database = new_entry;

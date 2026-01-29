@@ -1,6 +1,5 @@
 clc; clear; close all;
 % 1. Setup Data
-global Yint_post;
 load('data1.mat'); 
 load('Y_all.mat');
 load('CCT_TimeDomain.mat', 'CCT_TD');

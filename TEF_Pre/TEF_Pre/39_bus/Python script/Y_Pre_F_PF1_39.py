@@ -2,74 +2,55 @@ import os
 import re
 import numpy as np
 import scipy.io as sio
-import sys
-import config
 
 # Attempt to import PSS/E modules
 try:
-    import psse3603 as psse_mod
-    import psspy
-    import dyntools
-except ImportError:
-    pass 
+    import psse3603  # type: ignore
+    import psspy     # type: ignore
+    import dyntools  # type: ignore
+    pss_available = True
+except Exception:
+    pss_available = False
+
+import config
 
 # ----------------- USER CONFIG (centralized) -----------------
 work_dir = config.WORK_DIR
 result_dir = config.RESULT_DIR
-raw_file = config.raw_path("IEEE39bus1.raw")
+raw_file = config.RAW_FILE
 dyr_file = config.DYR_FILE
-txt_file = config.out_path("Ybus_Export.txt")
-mat_file = config.out_path("Y_all.mat")
+txt_file = config.TXT_FILE_YBUS
+mat_file = config.MAT_FILE_YBUS
 mat_info = os.path.join(config.RESULT_DIR, "Fault_Info.mat")
 
-# Fault & clearing specification (IEEE 39 Bus)
+# Fault & clearing specification (use centralized values)
 fault_bus = config.FAULT_BUS
 trip_line_from = config.TRIP_LINE_FROM
 trip_line_to = config.TRIP_LINE_TO
-circuit_id = config.CKT_ID
+circuit_id = config.LINE_ID  # Usually '1 '
 
-gen_buses = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39]  # Generator bus numbers
-xd_prime = [0.025, 0.05, 0.045, 0.035, 0.089, 0.04, 0.044, 0.045, 0.045, 0.004]
-load_adm = {
-                1:	0,
-                2:	0,
-                3:	3.034-0.0226j,
-                4:	4.9612-1.8257j,
-                5:	0,
-                6:	0,
-                7:	2.3521-0.8451j,
-                8:	5.262-1.7742j,
-                9:	0,
-                10:	0,
-                11:	0,
-                12:	0,
-                14:	0,
-                15:	3.1037-1.4839j,
-                16:	3.0903-0.3034j,
-                17:	0,
-                18:	1.4867-0.2823j,
-                19:	0,
-                20:	6.392-1.0484j,
-                21:	2.5737-1.0802j,
-                22:	0,
-                23:	2.2673-0.775j,
-                24:	2.8681+0.855j,
-                25:	2.0027-0.422j,
-                26:	1.2557-0.1536j,
-                27:	2.6095-0.7011j,
-                28:	1.8681-0.2503j,
-                29:	2.5719-0.244j,
-                31:	0.0838-0.0419j,
-                39:	10.4063-2.3565j
+gen_buses = config.GEN_BUSES
+xd_prime = config.XD_PRIME
 
-    }
+# Hardcoded Load Admittances (Exact match to MATLAB)
+load_adm = config.LOAD_ADM
+
+# Default timing
+fault_time = config.T_FAULT_START
+t_cl = config.T_CLEAR
+clear_time = fault_time + t_cl
+end_time = config.T_END
+
 # ------------------------------------------------
 
 def init_psse_and_read_case():
-    psspy.psseinit(config.PSSE_INIT)
-    ierr = psspy.read(0, raw_file)
-    if ierr != 0:
-        raise RuntimeError(f"psspy.read returned error {ierr}")
+    try:
+        _ = psspy.psseinit(200)
+        ierr = psspy.read(0, raw_file)
+        if ierr != 0:
+            raise RuntimeError(f"psspy.read returned error {ierr}")
+    except Exception as e:
+        raise
 
 def get_line_params_from_psse(bus_from, bus_to, ckt_id='1 '):
     """
@@ -245,10 +226,8 @@ def kron_reduce_internal(Y_physical, gen_buses_list, xd_prime_list, load_admitta
     # B. Augment Physical Matrix (YD)
     YD = Y_physical.copy()
     
-    # -------------------------------------------------------------
-    # FIX: Check against 39 (Total Buses) instead of 9
-    # If matrix size N is 38 (less than 39), it means a bus (fault bus) was removed.
-    # -------------------------------------------------------------
+    # Detect if we are in Faulted Mode (Bus removed)
+    # IEEE 39 bus is size 39. If size is 38, it's faulted.
     is_faulted = (N < 39) 
 
     # Add Gen Admittances to Diagonals
@@ -256,16 +235,16 @@ def kron_reduce_internal(Y_physical, gen_buses_list, xd_prime_list, load_admitta
     for i, bus in enumerate(gen_buses_list):
         if is_faulted:
             if bus == fault_bus: continue 
-            # Index shift: if gen bus is after fault bus, subtract 1 (bus-2 for 0-based index)
+            # Index shift: if gen bus is after fault bus, subtract 1
             phys_idx = bus - 1 if bus < fault_bus else bus - 2
         else:
-            # Normal indexing (bus-1 for 0-based index)
             phys_idx = bus - 1
             
         gen_indices_map.append((i, phys_idx))
         YD[phys_idx, phys_idx] += ybar[i, i]
 
-    # Add Load Admittances to Diagonals
+    # Add Load Admittances to Diagonals (THE CRITICAL FIX)
+    # We manually add these here because we skipped conl in PSS/E
     if load_admittance:
         for bus_num, yload in load_admittance.items():
             if is_faulted:
@@ -377,9 +356,9 @@ if __name__ == "__main__":
     # Save
     print(f"\nSaving to {mat_file} ...")
     mdict = {
-        "Yi_pre": Y_pre,
+        "Y_pre": Y_pre,
         "Y_fault": Y_fault,
-        "Y_post": Y_pre,
+        "Y_post": Y_post,
         "Yint_pre": Yint_pre,
         "Yint_fault": Yint_fault,
         "Yint_post": Yint_pre
@@ -393,5 +372,3 @@ if __name__ == "__main__":
         "Fault_Impedance": 0
     })
     print("SUCCESS: Matrices saved.")
-
-    

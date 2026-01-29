@@ -109,10 +109,10 @@ fprintf('Gen: %d | Ang: %.4f | Spd: %.4f\n', MOD_sort_data');
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
 %%
 VPE = Calculate_PE(npts, g, Pi, C, D, th, ths);
-mod_indx=3;
+mod_indx=1;
 current_MOD_indices = MOD_sort_data(1:mod_indx,1); 
 
-theta_u = Calculate_theta_u1(mod_indx, MOD_sort_data, num_gen, ths, H);
+theta_u = Calculate_theta_u(mod_indx, MOD_sort_data, num_gen, ths, H);
 
 %% code for optimizaton of theta_u goes here to obtain theta_cuep_mod
 tic

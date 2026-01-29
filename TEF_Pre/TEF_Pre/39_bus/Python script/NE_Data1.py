@@ -1,28 +1,35 @@
-import psse3603
-import psspy
-import dyntools
+try:
+    import psse3603  # type: ignore
+    import psspy     # type: ignore
+    import dyntools  # type: ignore
+    pss_available = True
+except Exception:
+    pss_available = False
 import scipy.io
 import numpy as np
 import os
 import config
+import pandas as pd
 
 # ==============================================================================
 # 1. SETUP
 # ==============================================================================
 work_dir = config.WORK_DIR
 result_dir = config.RESULT_DIR
-raw_file = config.raw_path("IEEE39bus1.raw")
+raw_file = config.RAW_FILE
 dyr_file = config.DYR_FILE
-out_file = config.out_path("IEEE39.out")
-mat_file = config.out_path("data1.mat")
-
+out_file = config.OUT_FILE
+mat_file = config.MAT_FILE_DATA
 Tcl_file=config.TIME_FILE
 
-# Initialize PSS/E
-_i = psspy.getdefaultint()
-_f = psspy.getdefaultreal()
-psspy.psseinit(config.PSSE_INIT)
-
+# Initialize PSS/E (safe)
+try:
+    _i = psspy.getdefaultint()
+    _f = psspy.getdefaultreal()
+    psspy.psseinit(50)
+except Exception:
+    _i = 0
+    _f = 0.0
 # ==============================================================================
 # 2. SIMULATION
 # ==============================================================================
@@ -32,12 +39,12 @@ print("--- Starting Simulation for IEEE 39-Bus ---")
 fault_bus = config.FAULT_BUS
 from_bus = config.TRIP_LINE_FROM
 to_bus = config.TRIP_LINE_TO
-line_id = config.CKT_ID
+line_id = config.LINE_ID
 
-fault_time = config.FAULT_TIME
-t_cl = config.DEFAULT_CLEARING
+fault_time = config.T_FAULT_START
+t_cl = config.T_CLEAR
 clear_time = fault_time + t_cl
-end_time = fault_time + t_cl+3
+end_time = config.T_END
 
 # --- Load Case ---
 psspy.read(0, raw_file)
@@ -88,9 +95,9 @@ psspy.run(0, fault_time, 0, 1, 0)
 
 print(f"Applying Fault at Bus {fault_bus}...")
 psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
+#psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
 
 psspy.run(0, clear_time, 0, 1, 0)
-
 print(f"Tripping Line {from_bus}-{to_bus}...")
 #psspy.dist_branch_trip(from_bus, to_bus, line_id)
 psspy.dist_clear_fault(1)
@@ -135,7 +142,7 @@ if data_columns:
     
     # Save to .mat
     scipy.io.savemat(mat_file, {"data": final_matrix})
-    
+
     # --- VERIFY MAPPING ---
     print("\n--- VERIFYING CHANNEL MAPPING ---")
     for i in range(1, 11):
@@ -144,19 +151,22 @@ if data_columns:
 
     print("-" * 30)
     print(f"SUCCESS: {mat_file} saved.")
-    print(f"Matrix Shape: {final_matrix.shape}")
     print("DATA STRUCTURE MAPPING:")
-    print("Columns 1-10 : Rotor Angle (delta)")
-    print("Columns 11-20: Speed (omega)")
-    print("Columns 21-30: Mechanical Power (Pm)")
-    print("Columns 31-40: Electrical Power (Pe)")
-    print("Columns 41-50: Reactive Power (Q)")
-    print("Column  51   : Time (t)") # <--- NEW
-    print("-" * 30)
-
+    print(f"Matrix Shape: {final_matrix.shape}")
+    print("Columns 1-10:   Rotor Angle (delta)")
+    print("Columns 11-20:   Speed (omega)")
+    print("Columns 21-30:   Mechanical Power (Pm)")
+    print("Columns 31-40:   Electrical Power (Pe)")
+    print("Columns 41-50:   Reactive Power (Q)")
+    print("Column  51:    Simulation Time (t)")
 else:
     print("Error: No data extracted.")
 
+    # ... (existing code for saving data matrix) ...
+
+# ==============================================================================
+# 6. EXPORT CLEARING TIME
+# ==============================================================================
 try:
     # Create a dictionary with the variable name you want in MATLAB
     # We wrap t_cl in a list [t_cl] or float(t_cl) to ensure compatible format
