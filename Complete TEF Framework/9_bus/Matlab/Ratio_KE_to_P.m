@@ -1,0 +1,30 @@
+clc;clear;
+%% 
+load('data1.mat');
+load('Tcl.mat');
+num_bus = 9;
+num_gen = 3;
+g = num_gen;
+H = [23.64; 6.4; 3.01]; 
+M = 2 * H / (2 * pi * 60); 
+M_tot = sum(M);
+Ws = (2 * pi * 60);
+T = data(:,16);
+idx_ang = 1:3;
+idx_spd = 4:6;
+idx_pm  = 7:9;
+idx_pe  = 10:12;
+delta = data(:, idx_ang) * (pi/180);
+omega = data(:, idx_spd) * Ws; 
+Pm    = data(:, idx_pm);
+% accessing data at clearing time
+data_time=1+t_cl;
+[~, idx_online] = min(abs(T - data_time));
+wpred=omega(idx_online,:);
+deltapred=delta(idx_online,:);
+Pgen=Pm(100,1:num_gen);
+KE=0.5*M'.*(wpred).^2;
+Ratio= KE ./ Pgen;
+[max_val, idx] = max(Ratio);
+Gen_sh=idx;
+save('shedable_gen.mat','Gen_sh','Pgen');

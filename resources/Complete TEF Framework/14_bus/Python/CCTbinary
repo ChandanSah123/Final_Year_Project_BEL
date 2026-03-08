@@ -1,0 +1,227 @@
+try:
+    import psse3603  # type: ignore
+    import psspy     # type: ignore
+    import dyntools  # type: ignore
+    pss_available = True
+except Exception:
+    pss_available = False
+import os
+import config
+import scipy.io
+import time
+
+# ==============================================================================
+# 1. SETUP & CONFIGURATION
+# ==============================================================================
+# --- CRITERIA ---
+# 360 degrees allows for wide swings (first swing stability) without 
+# declaring instability prematurely.
+MAX_ANGLE_THRESHOLD = 360
+
+work_dir = config.WORK_DIR
+result_dir = config.RESULT_DIR
+raw_file = config.RAW_FILE
+dyr_file = config.DYR_FILE
+out_file = config.OUT_FILE
+
+# Initialize PSS/E
+try:
+    _i = psspy.getdefaultint()
+    _f = psspy.getdefaultreal()
+    psspy.psseinit(50)
+except Exception:
+    _i = 0
+    _f = 0.0
+
+print("--- Starting Robust CCT Search (Hybrid Binary Search) ---")
+
+# ==============================================================================
+# 2. SIMULATION ENGINE
+# ==============================================================================
+def run_simulation(clearing_duration):
+    """
+    Runs PSS/E simulation. Returns (is_stable, max_spread_found).
+    """
+    # --- Parameters ---
+    fault_bus = config.FAULT_BUS
+    from_bus = config.TRIP_LINE_FROM
+    to_bus = config.TRIP_LINE_TO
+    line_id = config.LINE_ID
+
+    t_fault_start = config.T_FAULT_START
+    t_clear = t_fault_start + clearing_duration
+    # Simulate for 3 seconds AFTER fault to catch second-swing instability
+    t_end = t_fault_start + 3.0 
+
+    # --- Clean Previous Output ---
+    if os.path.exists(out_file):
+        try: os.remove(out_file)
+        except: pass
+
+    # --- Load Data ---
+    psspy.read(0, raw_file)
+    psspy.dyre_new([1,1,1,1], dyr_file, "", "", "")
+
+    # --- Solver Settings ---
+    # 0.002s (2ms) is a good balance for CCT search speed vs accuracy
+    psspy.dynamics_solution_param_2([_i]*8, [_f, _f, 0.002, _f, _f, _f, _f, _f])
+    psspy.fnsl([0,0,0,1,1,0,99,0])
+
+    # --- Convert Generators ---
+    psspy.cong(0) 
+    psspy.conl(0, 1, 1, [0, 0], [0.0, 100.0, 0.0, 100.0])
+    psspy.conl(0, 1, 2, [0, 0], [0.0, 100.0, 0.0, 100.0])
+    psspy.conl(0, 1, 3, [0, 0], [0.0, 100.0, 0.0, 100.0])
+    psspy.fact()
+    psspy.tysl(0)
+
+    # --- Setup Channels ---
+    psspy.delete_all_plot_channels()
+    # Record Angles (Code 1) - Channels 1, 2, 3...
+    psspy.chsb(0,1,[-1,-1,-1,1,1,0]) 
+
+    # --- Run Sequence ---
+    ierr = psspy.strt(0, out_file)
+    if ierr != 0: 
+        return False, 999.0 
+
+    # Steady State
+    psspy.run(0, t_fault_start, 0, 1, 0)
+    
+    # Fault
+    psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
+    #psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
+    psspy.run(0, t_clear, 0, 1, 0)
+
+    # Clear
+    psspy.dist_branch_trip(from_bus, to_bus, line_id)
+    psspy.dist_clear_fault(1)
+    psspy.run(0, t_end, 0, 1, 0)
+
+    # --- Check Stability ---
+    try:
+        chnf_obj = dyntools.CHNF(out_file)
+        _, _, chandata = chnf_obj.get_data()
+    except:
+        return False, 999.0
+    
+    if 'time' not in chandata: return False, 999.0
+
+    # Get all integer keys (Angle channels)
+    angle_keys = [k for k in chandata.keys() if isinstance(k, int)]
+    
+    num_steps = len(chandata['time'])
+    max_spread_global = 0.0
+    is_stable = True
+    
+    # Check every 5th step (sufficient resolution)
+    for i in range(0, num_steps, 5): 
+        current_angles = [chandata[k][i] for k in angle_keys]
+        if not current_angles: continue
+            
+        spread = max(current_angles) - min(current_angles)
+        if spread > max_spread_global:
+            max_spread_global = spread
+        
+        # Robust Threshold Check
+        if spread > MAX_ANGLE_THRESHOLD:
+            is_stable = False
+            break 
+            
+    return is_stable, max_spread_global
+
+# ==============================================================================
+# 3. BINARY SEARCH LOGIC (REPLACED)
+# ==============================================================================
+print("\n========================================")
+print("   STARTING HYBRID BINARY SEARCH")
+print("========================================\n")
+
+tic = time.perf_counter()
+
+# Silence PSS/E output
+psspy.report_output(6, "", []) 
+psspy.progress_output(6, "", [])
+
+# --- Search Parameters ---
+t_min = 0.00         # Last known stable time
+t_max = 0.00         # First known unstable time
+coarse_step = 0.05   # Step size for finding the initial bracket
+tolerance = 0.001    # Desired precision (1ms)
+max_search_limit = 2.0 # Safety cap for infinite CCT
+
+bracket_found = False
+CCT = 0.0
+
+print(f"{'ITER':<6} | {'TIME':<10} | {'STATUS':<10} | {'NOTE'}")
+print("-" * 50)
+
+# --- PHASE 1: BRACKETING (Find the Cliff Edge) ---
+# We march forward until we hit instability to define [t_min, t_max]
+current_t = 0.05 
+
+while not bracket_found:
+    if current_t > max_search_limit:
+        print(f"Safety Limit ({max_search_limit}s) reached. Fault is stable.")
+        CCT = max_search_limit
+        bracket_found = True # Exit loop
+        t_min = max_search_limit
+        t_max = max_search_limit # Effectively skip Phase 2
+        break
+
+    stable, spread = run_simulation(current_t)
+    
+    if stable:
+        print(f"{'Init':<6} | {current_t:.4f} s   | STABLE     | Range > {current_t:.3f}")
+        t_min = current_t # We know it's safe up to here
+        current_t += coarse_step
+    else:
+        print(f"{'Init':<6} | {current_t:.4f} s   | UNSTABLE   | Bracket Found [{t_min:.3f}, {current_t:.3f}]")
+        t_max = current_t # We found the upper bound
+        bracket_found = True
+
+# --- PHASE 2: BINARY SEARCH (Refine) ---
+# Only run if we found a valid unstable point
+if t_max > t_min:
+    iteration = 0
+    
+    # Loop until the gap between Min and Max is smaller than tolerance
+    while (t_max - t_min) > tolerance:
+        iteration += 1
+        
+        # BISECTION: Pick the exact middle
+        t_mid = (t_min + t_max) / 2.0
+        
+        stable, spread = run_simulation(t_mid)
+        
+        if stable:
+            print(f"{iteration:<6} | {t_mid:.4f} s   | STABLE     | Lower Bound -> {t_mid:.4f}")
+            t_min = t_mid # CCT is higher (in the upper half)
+        else:
+            print(f"{iteration:<6} | {t_mid:.4f} s   | UNSTABLE   | Upper Bound -> {t_mid:.4f}")
+            t_max = t_mid # CCT is lower (in the lower half)
+
+CCT = t_min
+toc = time.perf_counter()
+total_time = toc - tic
+
+# Re-enable output
+psspy.report_output(2, "", [])
+psspy.progress_output(2, "", [])
+
+# ==============================================================================
+# 4. EXPORT RESULTS
+# ==============================================================================
+print("\n" + "#"*50)
+print(f" BINARY SEARCH CCT FOUND: {CCT:.4f} seconds")
+print(f" COMPUTATION TIME:        {total_time:.4f} seconds")
+print("#"*50)
+
+# Export to MATLAB
+mat_file_path = os.path.join(result_dir, "CCT_TimeDomain.mat")
+try:
+    scipy.io.savemat(mat_file_path, {'CCT_TD': CCT, 'CPU_TIME': total_time})
+    print(f" [SUCCESS] Saved .mat file: {mat_file_path}")
+    print("Load in MATLAB using: load('CCT_TimeDomain.mat')")
+except ImportError:
+    print(" [ERROR] Scipy not found. Cannot save .mat file.")
