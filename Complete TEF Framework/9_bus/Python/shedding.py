@@ -1,14 +1,17 @@
 # File:"C:\Users\DELL\Desktop\PhD\energy function\NE\shedding.py", generated on MON, NOV 09 2015   0:27, release 33.05.02
 # File:"C:\Users\DELL\Desktop\shedding.py", generated on WED, JUN 24 2015  19:54, release 33.05.02
-import psse3603
+import psse3605
 import psspy
 import pssplot
+_i = psspy.getdefaultint()
+_f = psspy.getdefaultreal()
+psspy.psseinit(50)
 P=[250.0, 521.6, 650.0, 632.0, 508.0, 650.0, 762.0, 540.0, 830.0, 1000]
 Xd=[0.0250,0.0500,0.0450,0.0350,0.0890,0.0400,0.044,0.0450,0.0450,0.0040]
 H=[42, 30.3, 35.8, 28.6, 26, 34.8, 26.4, 24.3, 34.5, 500]
 
 shg=7-1
-shed=0.3
+shed=0.24
 remain=1-shed
 Premain=P[shg]*remain
 Pshed=P[shg]*shed
@@ -22,7 +25,7 @@ Hshed=H[shg]*shed
 b=2
 m=36
 t=1.33
-delay=0.1+0.08
+delay=0.1
 
 psspy.read(0,r"""C:\Users\DELL\Desktop\PhD\energy function\NE\ieee39shed.raw""")
 psspy.dyre_new([1,1,1,1],r"""C:\Users\DELL\Desktop\PhD\energy function\NE\ieee39shed.dyr""","","","")

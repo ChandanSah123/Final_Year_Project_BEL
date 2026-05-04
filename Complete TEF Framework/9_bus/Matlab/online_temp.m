@@ -43,17 +43,7 @@ delta = data(:, idx_ang) * (pi/180);
 omega = data(:, idx_spd) * Ws; 
 Pm    = data(:, idx_pm);
 
-%% 2. DETERMINATION OF SHEDDABLE GENERATORS
-data_time = 1 + t_cl;
-[~, idx_online] = min(abs(T - data_time));
-wpred = omega(idx_online,:);
-deltapred = delta(idx_online,:);
-Pgen = Pm(100, 1:num_gen);
 
-% Calculate ratio of Kinetic Energy to Mechanical Power
-KE = 0.5 * M' .* (wpred).^2;
-Ratio = KE ./ Pgen;
-[max_val, Gen_sh] = max(Ratio); % Identify the most severely accelerated generator
 
 %% 3. COI REFERENCE FRAME TRANSFORMATION
 d_COI = (delta * M) / M_tot;
@@ -194,17 +184,18 @@ else
 end
 
 %% 8. AUTOMATED GENERATOR SHEDDING ALGORITHM
-
 if Shed == 1
-    Gen_idx = Gen_sh;
+    
     threshold = 0.001; 
     Psh_max = 1;
-    max_iter = 30;
+    max_iter = 100;
     
-    pred_data_time = faultclearing_time+0.2;
+    pred_data_time = faultclearing_time+0.1;
     [~, idx_online] = min(abs(T - pred_data_time));
     delta_abs = delta(idx_online, :); 
     omega_abs = omega(idx_online, :);
+    display(delta_abs);
+    display(omega_abs);
     
     % --- INITIALIZE WARM START VARIABLES ---
     ths_guess = ths(:);
@@ -219,10 +210,23 @@ if Shed == 1
     
     fprintf('Iter %d: Shed %05.2f%% -> Vcr: %.4f, Vtot: %.4f, Margin: %.4f\n', ...
             k, Psh(k)*100, Vcr, Vtot(k), Vsh(k));
-            
+
+
+ % DETERMINATION OF SHEDDABLE GENERATORS
+    data_time = 1 + t_cl;
+    [~, idx_online] = min(abs(T - data_time));
+    wpred = omega(idx_online,:);
+    deltapred = delta(idx_online,:);
+    Pgen = Pm(100, 1:num_gen);
+    
+    % Calculate ratio of Kinetic Energy to Mechanical Power
+    KE = 0.5 * M' .* (wpred).^2;
+    Ratio = KE ./ Pgen;
+    [max_val, Gen_sh] = max(Ratio);  %Identify the most severely accelerated generator
+    Gen_idx = Gen_sh;
+   
     k = k + 1;
     Psh(k) = 0.01; % Initial 1% step
-    
     while k < max_iter
         % A. Update Network Parameters
         H1 = H; Pgen1 = Pgen; xd_p1 = xd_p;
@@ -287,72 +291,70 @@ if Shed == 1
         fprintf('Iter %d: Shed %05.2f%% -> Vcr: %.4f, Vtot: %.4f, Margin: %.4f\n', ...
             k, Psh(k)*100, Vcr_new, Vtot(k), Vsh(k));
             
-       % F. CHECK STABILITY AND CALCULATE NEXT SHEDDING AMOUNT
-         if Vsh(k) >= threshold  
+ % F. CHECK STABILITY AND CALCULATE NEXT SHEDDING AMOUNT
+        
+        if Vsh(k) >= threshold  
+            % FLOWCHART DIAMOND 1: "Vsh[k] < threshold ?" -> YES
             fprintf('>>> Analytical stable margin found at %.2f%% shedding.\n', Psh(k)*100);
             
-            % --- EMPIRICAL CALIBRATION FOR PHYSICAL SYSTEM ---
-            % Accounts for reactive power loss, voltage sag, and path approximations
-            % derived from offline PSS/E time-domain analysis.
-            K_cal = 2.51; % Calibration multiplier
-            Psh_actual = min(Psh(k) * K_cal, 1.0); % Cap at 100%
-            
-            fprintf('>>> Applying calibration factor (Kc = %.2f).\n', K_cal);
-            fprintf('>>> Executing Physical Shed Command: %.2f%% of Gen %d.\n', Psh_actual*100, Gen_sh);
-            break;
-        else 
-            if Psh(k) >= Psh_max
-                 warning('Required shedding exceeds 100%% limit. Triggering system-wide backup action.');
-                 break;
+            % FLOWCHART DIAMOND 2: "Psh[k] < Psh_MAX ?"
+            if Psh(k) < Psh_max
+                % YES PATH: "Shed Psh amount of generation" -> "Command to Unit"
+                fprintf('>>> Executing Physical Shed Command: %.2f%% of Gen %d.\n', Psh(k)*100, Gen_idx);
+                break; % End loop, command sent successfully
+            else
+                % NO PATH: "Take other control actions"
+                warning('>>> Stable margin found, but required shed (%.2f%%) exceeds Psh_MAX limit. Taking other control actions.', Psh(k)*100);
+                break; % End loop, trigger secondary safety systems
             end
             
-            % --- IMPROVED SECANT METHOD (Strict Flowchart Adherence) ---
-            % Flowchart: "Interpolate/Extrapolate Psh value at V=0 using two points nearest to V=0"
+        else 
+             if k > max_iter || Psh(k) > 2.0 
+                 warning('Secant method diverged. Aborting.');
+                 break;
+             end
+              % (Optional safeguard to prevent MATLAB from freezing if secant diverges forever, 
+            % acting as an emergency loop-breaker, though technically not in the flowchart)
+
+            % FLOWCHART DIAMOND 1: "Vsh[k] < threshold ?" -> NO
+            
+            % FLOWCHART BLOCK: "Interpolate/Extrapolate Psh value at V=0 i.e. P1 using two points nearest to V=0"
             if k > 1
-                % 1. Find the two points evaluated so far that are closest to V = 0
                 [~, sorted_indices] = sort(abs(Vsh(1:k)));
                 idx1 = sorted_indices(1);
                 idx2 = sorted_indices(2);
                 
-                % Ensure the two points are distinct to avoid division by zero
                 if abs(Psh(idx1) - Psh(idx2)) < 1e-4
-                    P_new = Psh(k) + 0.05; % Fallback 5% step if points are too close
+                    P_new = Psh(k) + 0.05; 
                 else
-                    % 2. Calculate slope using the two nearest points
                     slope = (Vsh(idx1) - Vsh(idx2)) / (Psh(idx1) - Psh(idx2));
-                    
                     if abs(slope) < 1e-4
-                        slope = sign(Vsh(k)) * 0.01; % Prevent divide by zero
+                        slope = sign(Vsh(k)) * 0.01; 
                     end
-                    
-                    % 3. Interpolate/Extrapolate targeting V = 0
-                    target_V = 0; 
+                    target_V = 0; % Root finding target
                     P_new = Psh(idx1) + (target_V - Vsh(idx1)) / slope;
                 end
                 
-                % 4. Safeguard: Limit the maximum step size per iteration to prevent wild swings
+                % Numeric bounds to prevent wild secant extrapolations
                 delta_P = P_new - Psh(k);
-                delta_P = max(min(delta_P, 0.10), -0.10); % Max 10% change per iteration
+                delta_P = max(min(delta_P, 0.10), -0.10); 
                 P_new = Psh(k) + delta_P;
-                
             else
-                % If only 1 point exists, we cannot interpolate yet
-                P_new = Psh(k) + 0.02; % Take an exploratory 2% step
+                P_new = Psh(k) + 0.02; % Step size if only 1 point exists
             end
             
-            % 5. Clamp between 0 and maximum allowable shedding (Psh_max)
-            P_new = max(min(P_new, Psh_max), 0);
+            % Prevent physically impossible negative shedding guesses
+            P_new = max(P_new, 0); 
             
-            % 6. Force forward momentum: If the math suggests shedding less or gets stuck, 
-            % but the system is STILL unstable, force an increase from the highest shed so far.
-            if P_new <= max(Psh) && Vsh(k) < threshold
-                 P_new = max(Psh) + 0.01; % Force at least a 1% increase
-            end
-            
-            % 7. Update for next iteration (Flowchart: k = k + 1)
+            % FLOWCHART BLOCK: "k = k + 1"
             k = k + 1;
+            
+            % Set next Psh value for the beginning of the next loop iteration 
+            % (Aligns with Flowchart: "Psh[k] = P1")
             Psh(k) = P_new;
+            
         end
     end
 end
+
 toc

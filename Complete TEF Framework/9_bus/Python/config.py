@@ -30,7 +30,7 @@ LINE_ID = '1 '
 # Timing
 T_FAULT_START = 1
 # Single centralized clearing time used by all scripts
-T_CLEAR =0.2
+T_CLEAR =0.245
 T_END =5
 # ==============================================================================
 # 3. SYSTEM DATA (For Y-Bus Calculation)

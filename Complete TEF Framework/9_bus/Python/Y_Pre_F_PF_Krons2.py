@@ -5,7 +5,7 @@ import scipy.io as sio
 
 # Attempt to import PSS/E modules
 try:
-    import psse3603  # type: ignore
+    import psse3605  # type: ignore
     import psspy     # type: ignore
     import dyntools  # type: ignore
     pss_available = True
@@ -358,10 +358,10 @@ if __name__ == "__main__":
     mdict = {
         "Y_pre": Y_pre,
         "Y_fault": Y_fault,
-        "Y_post": Y_post,
+        "Y_post": Y_pre,
         "Yint_pre": Yint_pre,
         "Yint_fault": Yint_fault,
-        "Yint_post": Yint_post
+        "Yint_post": Yint_pre
     }
     sio.savemat(mat_file, mdict)
      

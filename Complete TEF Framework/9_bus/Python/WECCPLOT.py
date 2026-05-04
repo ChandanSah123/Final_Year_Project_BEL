@@ -1,5 +1,5 @@
 try:
-    import psse3603  # type: ignore
+    import psse3605  # type: ignore
     import psspy     # type: ignore
     import dyntools  # type: ignore
     pss_available = True
@@ -87,7 +87,7 @@ else:
 
     psspy.run(0, clear_time, 0, 1, 0)
     print("Clearing Fault by TRIPPING LINE 7-5...")
-    psspy.dist_branch_trip(from_bus, to_bus, line_id)   # Use correct line ID
+   # psspy.dist_branch_trip(from_bus, to_bus, line_id)   # Use correct line ID
 
     print("Clearing Fault...")
     psspy.dist_clear_fault(1)

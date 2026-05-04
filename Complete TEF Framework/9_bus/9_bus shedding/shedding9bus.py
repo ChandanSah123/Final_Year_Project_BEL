@@ -1,6 +1,8 @@
 # File:"C:\Users\Acer\Desktop\9_bus shedding\shedding9bus.py", generated on MON, JAN 12 2026  19:51, PSS(R)E Xplore release 36.03.01
-import psse3603
-import psspy
+
+import psse3605  # type: ignore
+import psspy     # type: ignore
+import dyntools 
 import os
 import config
 import redirect
@@ -16,7 +18,7 @@ P=[71.641, 163.0, 85.0]
 Xd=[0.0608, 0.1198, 0.1813]
 H=[23.64, 6.4, 3.01]
 shg=2-1
-shed=0.93
+shed=0.36
 remain=1-shed
 Premain=P[shg]*remain
 Pshed=P[shg]*shed
@@ -31,8 +33,8 @@ from_bus=7
 to_bus=5
 line_id="1"
 t_fault_start=1.0
-t_clear=0.2
-trip_delay=0.2
+t_clear=0.245
+trip_delay=0.1
 t_end=5
 
 psspy.read(0,r"""C:\Users\Acer\Desktop\Complete TEF Framework\9_bus\9_bus shedding\IEEE9busshed.raw""")
@@ -60,7 +62,7 @@ psspy.run(0,t_fault_start,0,1,1)
 psspy.dist_3phase_bus_fault(fault_bus,0,1,230.0,[0.0,-0.2E+10])
 psspy.run(0,t_fault_start + t_clear,0,1,1)
 psspy.dist_clear_fault(1)
-psspy.dist_branch_trip(from_bus,to_bus,line_id)
+#psspy.dist_branch_trip(from_bus,to_bus,line_id)
 psspy.run(0,t_fault_start + t_clear + trip_delay,0,1,1)
 psspy.dist_machine_trip(2,r"""2""")
 psspy.run(0,t_end,0,1,1)

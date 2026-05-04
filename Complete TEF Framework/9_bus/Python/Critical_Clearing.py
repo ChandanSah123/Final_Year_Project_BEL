@@ -1,5 +1,5 @@
 try:
-    import psse3603  # type: ignore
+    import psse3605  # type: ignore
     import psspy     # type: ignore
     import dyntools  # type: ignore
     pss_available = True
@@ -24,6 +24,7 @@ dyr_file = config.DYR_FILE
 out_file = config.OUT_FILE
 
 # Initialize PSS/E
+print("Before Init")
 try:
     _i = psspy.getdefaultint()
     _f = psspy.getdefaultreal()
@@ -31,6 +32,8 @@ try:
 except Exception:
     _i = 0
     _f = 0.0
+
+print("After Init")
 
 print("--- Starting Robust CCT Search (Step-Forward & Refine) ---")
 
@@ -50,7 +53,7 @@ def run_simulation(clearing_duration):
     t_fault_start = config.T_FAULT_START
     t_clear = t_fault_start + clearing_duration
     # Simulate for 3 seconds AFTER fault to catch second-swing instability
-    t_end = t_fault_start + 3.0 
+    t_end = 5
 
     # --- Clean Previous Output ---
     if os.path.exists(out_file):
@@ -88,12 +91,12 @@ def run_simulation(clearing_duration):
     psspy.run(0, t_fault_start, 0, 1, 0)
     
     # Fault
-    #psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
-    psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
+    psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
+    #psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
     psspy.run(0, t_clear, 0, 1, 0)
 
     # Clear
-    psspy.dist_branch_trip(from_bus, to_bus, line_id)
+    #psspy.dist_branch_trip(from_bus, to_bus, line_id)
     psspy.dist_clear_fault(1)
     psspy.run(0, t_end, 0, 1, 0)
 

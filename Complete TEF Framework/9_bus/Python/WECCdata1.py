@@ -1,5 +1,5 @@
 try:
-    import psse3603  # type: ignore
+    import psse3605  # type: ignore
     import psspy     # type: ignore
     import dyntools  # type: ignore
     pss_available = True
@@ -34,8 +34,6 @@ except Exception:
 # 2. SIMULATION
 # ==============================================================================
 print("--- Starting Simulation for IEEE 9-Bus ---")
-print("--- Starting Simulation for IEEE 39-Bus ---")
-
 # --- Simulation Settings ---
 fault_bus = config.FAULT_BUS
 from_bus = config.TRIP_LINE_FROM
@@ -52,7 +50,7 @@ psspy.read(0, raw_file)
 psspy.dyre_new([1,1,1,1], dyr_file, "", "", "")
 
 # --- Solve Power Flow ---
-psspy.dynamics_solution_param_2([_i]*8, [_f, _f, 0.01, _f, _f, _f, _f, _f])
+psspy.dynamics_solution_param_2([_i]*8, [_f, _f, 0.001, _f, _f, _f, _f, _f])
 psspy.fnsl([0,0,0,1,1,0,99,0])
 
 # ==============================================================================
@@ -96,12 +94,12 @@ if ierr != 0:
 psspy.run(0, fault_time, 0, 1, 0)
 
 print(f"Applying Fault at Bus {fault_bus}...")
-#psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
-psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
+psspy.dist_bus_fault(fault_bus, 1, 0.0, [0.0, -0.2E+10])
+#psspy.dist_branch_fault(from_bus, to_bus, line_id, 1, 0.0, [0.0, -0.2E+10])
 
 psspy.run(0, clear_time, 0, 1, 0)
 print(f"Tripping Line {from_bus}-{to_bus}...")
-psspy.dist_branch_trip(from_bus, to_bus, line_id)
+#psspy.dist_branch_trip(from_bus, to_bus, line_id)
 psspy.dist_clear_fault(1)
 
 psspy.run(0, end_time, 0, 1, 0)

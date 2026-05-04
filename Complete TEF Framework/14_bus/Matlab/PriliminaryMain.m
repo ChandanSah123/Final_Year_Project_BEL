@@ -17,6 +17,7 @@ idx_pe  = 16:20;      % Columns for Elec Power
 % Parameters
 H = [5.148; 6.54; 6.54; 5.06; 5.06]; % Example
 E=[1.1188 1.0893 1.0418 1.0706 1.0970];
+xd_p = [0.230; 0.13; 0.13; 0.12; 0.12];
 M = 2 * H / (2 * pi * 60); 
 M_tot = sum(M);
 Ws=(2*pi*60);
@@ -39,13 +40,6 @@ th=theta;
 idx_gen = [1 2 3 6 8];
 idx_load = setdiff(1:num_bus, idx_gen);
 
-% Full voltage vector (14x1)
-v_gen_full = [1.059999943; 1.044999957; 1.00999999; 1.018653631; 1.027456641; ...
-              1.043193817; 1.033148766; 1.069104671; 1.015102386; 1.012283802; ...
-              1.023853183; 1.029081106; 1.026109815; 1.019879818];
-
-slack_bus = 1;
-xd_p = [0.230; 0.13; 0.13; 0.12; 0.12];
 
 % --- LOGIC FIX: Correctly Map Power to Generator Buses ---
 Pgen = zeros(num_bus, 1);       % Initialize all as 0
@@ -53,22 +47,9 @@ Pgen(idx_gen) = Pm(1, 1:5);     % Assign Pm only to buses [1 2 3 6 8]
 
 YN_post = Y_post;
 
-% --- SYNTAX FIX: Pass only generator voltages ---
-% We pass v_gen_full(idx_gen) so the function gets a 5x1 vector, matching the 5 PV buses.
-x_eq_post = NR_ss(YN_post, Pgen, idx_load, v_gen_full(idx_gen), slack_bus);
-
-V_eq_post = x_eq_post(num_bus+1:end) .* (cos(x_eq_post(1:num_bus)) + 1i*sin(x_eq_post(1:num_bus)));
-I_eq_post = YN_post * V_eq_post;
-Pgen_post=real(V_eq_post(idx_gen).*conj(I_eq_post(idx_gen)));
-Eeq_post=abs(V_eq_post(idx_gen)+1i*xd_p.*I_eq_post(idx_gen));
-delta_eq_post=angle(V_eq_post(idx_gen)+1i*xd_p.*I_eq_post(idx_gen));
-x_eq_post=[delta_eq_post-M'*delta_eq_post/M_tot; zeros(num_gen,1)];
-%ths=x_eq_post(1:num_gen);
-%ths=[-0.1782 0.5309 0.2711]';
 
 %% krons reduced matrix
   Y1=Yint_post;
-  %E=Eeq_post;
  C=zeros(g,g);
  D=zeros(g,g);
  for i=1:g
@@ -79,7 +60,6 @@ x_eq_post=[delta_eq_post-M'*delta_eq_post/M_tot; zeros(num_gen,1)];
  end
 %% Alternative method to find the stable equilibrium point
 Pm = Pm(1, 1:num_gen);   % 1x3 Row Vector
-%E = Eeq_post.';         % 1x3 Row Vector
 H = H(:); 
 obj_fun = @(x) 1;
 x0 = theta(100,:);
@@ -88,37 +68,24 @@ A = [];
 b = []; 
 Aeq = [];       
 beq = []; 
-
-%bounds
-
 lb = -pi * ones(g, 1); 
 ub =  pi * ones(g, 1);
-
-
-opts = optimset('Algorithm', 'interior-point');
-%opts = optimset('Diplay','iter','Algorithm','sqp');
+opts = optimset('Algorithm', 'sqp');
+%opts = optimset('Algorithm', 'interior-point');
 % 5. Constraint Function Handle
 nonlin_con =@(x) SEPfunction(x, Pm, E, C, D, H, Y1);
-
 % 6. Run Optimization
 fprintf('Solving for CUEP with COI Constraint...\n');
 [x_sol1, fval1, exitflag1, output1] = fmincon(obj_fun, x0, A, b, Aeq, beq, lb, ub, nonlin_con, opts);
 ths = x_sol1-(sum(x_sol1(:) .* H(:)) / sum(H));
-%display(ths);  -0.183008274905452	0.544513400978037	0.279544801496823
-%display(ths1);
- 
 
 %% 3. DIRECT CUEP & MOD IDENTIFICATION (Using CCT Snapshot)
 fault_start_time = 1.0; 
-t_cct_absolute1 = fault_start_time + CCT_TD+0.2; %slightly higher than cct
+t_cct_absolute1 = fault_start_time + CCT_TD+0.05; %slightly higher than cct
 t_cct_absolute=fault_start_time + CCT_TD;
-
 fprintf('Fault Duration: %.4fs | Absolute Clearing Time: %.4fs\n', CCT_TD, t_cct_absolute1);
-
 [~, idx_cct] = min(abs(T - t_cct_absolute));
-
 fprintf('Snapshot taken at simulation step: %d (t = %.4fs)\n', idx_cct, T(idx_cct));
-
 theta_guess = theta(idx_cct, :)';
 [sorted_angles, sort_idx] = sort(theta_guess, 'descend');
 w_guess = w_tilde(idx_cct, :)'; 
@@ -131,7 +98,7 @@ fprintf('Gen: %d | Ang: %.4f | Spd: %.4f\n', MOD_sort_data');
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
 %%
 VPE = Calculate_PE(npts, g, Pi, C, D, th, ths);
-mod_indx=1;
+mod_indx=4;
 current_MOD_indices = MOD_sort_data(1:mod_indx,1); 
 
 theta_u = Calculate_theta_u(mod_indx, MOD_sort_data, num_gen, ths, H);
@@ -142,7 +109,7 @@ Pm_row = Pm(1, 1:num_gen);   % 1x3 Row Vector
 E_row  = E;         % 1x3 Row Vector
 H_col  = H(:);               % 3x1 Column Vector
 % objective function
-obj_fun = @(x)Calculate_Fsum(th, g, Pi, C, D, H);
+obj_fun = @(x)Calculate_Fsum(x, g, Pi, C, D, H);
 %initial condition
 x0 = theta_u;
 %linear Constraint
@@ -150,25 +117,19 @@ A = [];
 b = []; 
 Aeq = H';       
 beq = 0; 
-
-%bounds
-
 lb = -2*pi * ones(g, 1); 
 ub =  2*pi * ones(g, 1);
-
-
 opts = optimset('Algorithm', 'interior-point');
-%opts = optimset('Diplay','iter','Algorithm','sqp');
+%opts = optimset('Algorithm', 'sqp');
 % 5. Constraint Function Handle
 nonlin_con =[];
-
 % 6. Run Optimization
 fprintf('Solving for CUEP with COI Constraint...\n');
 [x_sol, fval, exitflag, output] = fmincon(obj_fun, x0, A, b, Aeq, beq, lb, ub, nonlin_con, opts);
 toc
 %%
-% 7. Post-Process
 theta_cuep_mod = x_sol - (sum(x_sol(:) .* H_col(:)) / sum(H_col));
+
 
 % 8. Convergence Check
 if exitflag <= 0
@@ -177,9 +138,6 @@ else
     %[~, mism] = nonlin_con(theta_cuep_mod);
    % fprintf('CUEP Found. Max Power Mismatch: %.2e p.u.\n', max(abs(mism)));
 end
-% ... [Rest of your code] ...
-%theta_cuep_mod = [-0.7451 2.3909 0.6487]';
-
 Vcr_candidate = Calculate_PE_single_point(theta_cuep_mod, ths, Pi, C, D, g);
 %Vcr_candidate = Calculate_PE(1, g, Pi, C, D, theta_u, ths);
 [KE, KE_corr_candidate] = Calculate_KE(npts, g, H, Ws, w, current_MOD_indices);
@@ -223,10 +181,6 @@ display(V_total(idx_cct));
 display(Vcr_candidate);
 fprintf("Energy margin=\n");
 display(delV_candidate(idx_cct));
-
-%% calculation of ratio of kinetic energy to power
-
-
 %% 4. COMPREHENSIVE ENERGY PLOTTING
 
 figure('Name', 'TEF Analysis: Energy & Stability Margin', 'Color', 'w', 'Position', [100, 100, 1000, 800]);
