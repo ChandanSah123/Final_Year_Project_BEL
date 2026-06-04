@@ -1,8 +1,8 @@
 function [c, ceq] = SEPfunction(x, Pm, E, C, D, H, Y)
-
- 
     c = [];
-    g = numel(x); % Automatically detect system size (e.g., 3 or 10)
+    g = numel(x); 
+    
+    % Calculate Pcoi (Transfer conductance sum)
     Pcoi = 0;
     for i = 1:g 
         for j = i+1:g
@@ -14,15 +14,7 @@ function [c, ceq] = SEPfunction(x, Pm, E, C, D, H, Y)
     ceq = zeros(g, 1);
     
     for i = 1:g
-        % Now this loop is safe because g matches the size of x
-        for k = 1:g
-            if x(k) > pi
-                x(k) = -(2*pi - x(k));
-            end
-            if x(k) < -pi
-                x(k) = (2*pi + x(k));
-            end
-        end
+        % Note: Manual angle wrapping removed! fmincon lb/ub handles this.
         
         for j = 1:g        
             if i ~= j
@@ -33,8 +25,7 @@ function [c, ceq] = SEPfunction(x, Pm, E, C, D, H, Y)
         end
         
         % Ensure explicit row/column handling for the COI term
-        % We use 'sum(Pm)' assuming Pm is a row vector from your Main script fixes
-        term_loss = sum(Pm - E.^2 .* real(diag(Y))'); 
+        term_loss = sum(Pm(:) - (E(:).^2) .* real(diag(Y))); 
         ceq(i) = ceq(i) - (H(i)/sum(H)) * term_loss + (H(i)/sum(H)) * Pcoi;
     end
 end

@@ -58,21 +58,21 @@ delta = data(:, idx_ang)*(pi/180);
 omega = data(:, idx_spd)*Ws; % Ensure this is speed DEVIATION (w - 1.0) or (w - w0)
 Pm = data(:, idx_pm);
 Pe = data(:, idx_pe);
-%% COI reference
+%% 3. COI REFERENCE FRAME TRANSFORMATION
 d_COI = (delta * M) / M_tot;
 w_COI = (omega * M) / M_tot;
+
 theta = delta - d_COI;
 w_tilde = omega - w_COI;
 w = w_tilde;
-th=theta;
+th = theta;
 
-%% 2. CALCULATE POST-FAULT SEP
-% to find the stable equilibrium point (SEP) for the post-fault topology.
+%% 4. CALCULATE POST-FAULT SEP 
 fprintf('1. Calculating Post-Fault Equilibrium (SEP)...\n');
 Pgen = zeros(num_gen,1);
-Pgen(1:num_gen) = Pm(1, 1:num_gen); % Assume Pm constant
+Pgen(1:num_gen) = Pm(1, 1:num_gen); 
 
-%%  Calculate Y-bus Reduced Parameters (C and D matrices)
+% Calculate Y-bus Reduced Parameters (C and D matrices)
 C = zeros(g,g);
 D = zeros(g,g);
 for i = 1:g
@@ -81,154 +81,134 @@ for i = 1:g
         D(i,j) = E(i)*E(j)*real(Y1(i,j)); 
     end
 end
-% Calculate Power Injection (Pi)
 Pi = Pgen(1:num_gen) - (real(diag(Y1))) .* ((E(:)).^2);
 
-%% 3. SIMULATE "REAL-TIME" DATA ACQUISITION
+% Finding SEP using fmincon
+Pm_row = Pm(1, 1:num_gen);   
+obj_fun_sep = @(x) 1; 
+x0_sep = theta(100,:);
+
+opts_sep = optimset('Algorithm', 'sqp', 'Display', 'off');
+nonlin_con_sep = @(x) SEPfunction(x, Pm_row, E, C, D, H, Y1);
+
+[x_sol1, ~, ~, ~] = fmincon(obj_fun_sep, x0_sep, [], [], [], [], -pi*ones(g,1), pi*ones(g,1), nonlin_con_sep, opts_sep);
+ths = x_sol1 - (sum(x_sol1(:).* H(:)) / sum(H));
+
+%% 5. REAL-TIME DATA ACQUISITION & kNN MOD MATCHING
 fault_start_time = 1.0;
-data_time = fault_start_time+ 0.1; % Example: Test near the CCT found earlier
+data_time_online = fault_start_time + 0.1; 
+[~, idx_online_snap] = min(abs(T - data_time_online));
+t_online = T(idx_online_snap);
 
-[~, idx_online] = min(abs(T - data_time));
-
-t_online = T(idx_online);
 fprintf('2. Acquiring Data Snapshot at t = %.4fs\n', t_online);
+delta_online = theta(idx_online_snap, :);
+omega_online = w(idx_online_snap, :);
 
-% Get Measurements at this instant
-delta_online = theta(idx_online, :);
-omega_online = w(idx_online, :);
+KE_online = 0.5 .* M' .* (omega_online).^2;
+KE_tot = sum(KE_online);
+KE_Norm = KE_online / KE_tot;
 
-KE=0.5.*M'.*(omega_online).^2;
-KE_tot=sum(KE);
-KE_Norm=KE/KE_tot;
+% kNN Search against offline database
+X = vertcat([TEF_Database.KE_Signature].');
+Y_knn = KE_Norm;
+[idx_knn, Euc_D] = knnsearch(X, Y_knn, "K", 5, "Distance", "euclidean");
+Sorted_Mod = {TEF_Database(idx_knn).MOD_Generators};
 
-%% kNN search
-X =vertcat([TEF_Database.KE_Signature].');
-Y = KE_Norm;
-[idx_knn,Euc_D]=knnsearch(X,Y,"K",5,"Distance","euclidean");
+%% 6. FINDING CUEP VECTOR FOR RANKED MODS (Bug Fixed Here)
+CUEP_Candidate = zeros(length(Sorted_Mod), num_gen);
+H_col = H(:);               
 
-Fault = {TEF_Database(idx_knn).Fault_Location}.';
-Sorted_Mod={TEF_Database(idx_knn).MOD_Generators};
-%% Alternative method to find the stable equilibrium point
-Pm = Pm(1, 1:num_gen);   % 1x3 Row Vector
-H = H(:); 
-obj_fun = @(x) 1;
-x0 = theta(100,:);
-%linear Constraint
-A = []; 
-b = []; 
-Aeq = [];       
-beq = []; 
-lb = -pi * ones(g, 1); 
-ub =  pi * ones(g, 1);
-opts = optimset('Algorithm', 'sqp','Display','off');
-%opts = optimset('Algorithm', 'interior-point','Display','off');
-% 5. Constraint Function Handle
-nonlin_con =@(x) SEPfunction(x, Pm, E, C, D, H, Y1);
-% 6. Run Optimization
 fprintf('Solving for CUEP with COI Constraint...\n');
-[x_sol1, fval1, exitflag1, output1] = fmincon(obj_fun, x0, A, b, Aeq, beq, lb, ub, nonlin_con, opts);
-ths = x_sol1-(sum(x_sol1(:) .* H(:)) / sum(H));
-%% Finding CUEP vector For each ranked MOD
-CUEP_Candidate=zeros(length(Sorted_Mod),num_gen);
-for k=1:length(Sorted_Mod)
-MOD=Sorted_Mod{k};
-theta_u = Calculate_theta_u_online(MOD, num_gen, ths, H);
-Pm_row = Pm(1, 1:num_gen);   % 1x3 Row Vector
-E_row  = E;         % 1x3 Row Vector
-H_col  = H(:);               % 3x1 Column Vector
-% objective function
-obj_fun = @(x)Calculate_Fsum(x, g, Pi, C, D, H);
-%initial condition
-x0 = theta_u;
-%linear Constraint
-A = []; 
-b = []; 
-Aeq = H';       
-beq = 0; 
-%lb = -2*pi * ones(g, 1); ub =  2*pi * ones(g, 1);
-lb = theta_u - (pi/2) * ones(g, 1); ub = theta_u + (pi/2) * ones(g, 1);
-opts = optimset('Algorithm', 'interior-point','Display','off');
-%opts = optimset('Algorithm', 'sqp','Display','off');
-% 5. Constraint Function Handle
-nonlin_con =[];
-% 6. Run Optimization
-fprintf('Solving for CUEP with COI Constraint...\n');
-[x_sol, fval, exitflag, output] = fmincon(obj_fun, x0, A, b, Aeq, beq, lb, ub, nonlin_con, opts);
-% 7. Post-Process
-theta_cuep_mod = x_sol - (sum(x_sol(:) .* H_col(:)) / sum(H_col));
-
-%%
-if exitflag <= 0
-    warning('CUEP Optimization did not converge. ExitFlag: %d', exitflag);
-else
-    %[~, mism] = nonlin_con(theta_cuep_mod);
-    fprintf('CUEP Found. Max Power Mismatch\n');
+for k = 1:length(Sorted_Mod)
+    MOD = Sorted_Mod{k};
+    theta_u = Calculate_theta_u_online(MOD, num_gen, ths, H);
+    
+    % --- BUG FIX: Variable 'x' is now correctly passed to Calculate_Fsum ---
+    obj_fun_cuep = @(x) Calculate_Fsum(x, g, Pi, C, D, H);
+    x0_cuep = theta_u;
+    
+    Aeq = H';       
+    beq = 0; 
+    lb = -2*pi * ones(g, 1); ub =  2*pi * ones(g, 1);
+    
+    opts_cuep = optimset('Algorithm', 'interior-point', 'Display', 'off');
+    
+    [x_sol_cuep, ~, exitflag_cuep, ~] = fmincon(obj_fun_cuep, x0_cuep, [], [], Aeq, beq, lb, ub, [], opts_cuep);
+    theta_cuep_mod = x_sol_cuep - (sum(x_sol_cuep .* H_col) / sum(H_col));
+    
+    if exitflag_cuep <= 0
+        warning('CUEP Optimization did not converge. ExitFlag: %d', exitflag_cuep);
+    else
+        % Calculate actual mismatch to verify finding a true saddle point
+        mismatch_val = Calculate_Fsum(theta_cuep_mod, g, Pi, C, D, H);
+        fprintf('CUEP Found. Power Mismatch (Sum of Squares): %e\n', mismatch_val);
+    end
+    
+    CUEP_Candidate(k,:) = theta_cuep_mod;
 end
-  
 
-fprintf('Saving the controlling Unstable Equillibrium Point \n');
-CUEP_Candidate(k,:)=theta_cuep_mod;
-end
-%% Correct MOD Identification
-%Checking for few MODs
- faultclearing_time=1+t_cl;
- [~, idx_clearing] = min(abs(T - faultclearing_time));
- wcl=w(idx_clearing, :);
- thetacl=theta(idx_clearing, :);
-num_candidates = length(Sorted_Mod);
-limit = min(num_candidates, 8);
+%% 7. MOD IDENTIFICATION & MARGIN ASSESSMENT
+faultclearing_time = 1 + t_cl;
+[~, idx_clearing] = min(abs(T - faultclearing_time));
+wcl = w(idx_clearing, :);
+thetacl = theta(idx_clearing, :);
+
+limit = min(length(Sorted_Mod), 3);
 Vcr_candidate = zeros(limit, 1);
 KE_corr_candidate = zeros(limit, 1);
 V_total = zeros(limit, 1);
 del_VPE_candidate = zeros(limit, 1);
 norm_delVPE = zeros(limit, 1);
-VPE= Calculate_PE_single_point(thetacl, ths, Pi, C, D, g);
-for i=1:limit
-MOD=Sorted_Mod{i};
-Vcr_candidate(i) = Calculate_PE_single_point(CUEP_Candidate(i,:), ths, Pi, C, D, g);
-KE_corr_candidate(i) = Calculate_KE_online(g, H, Ws, wcl, MOD);
-V_total(i) = VPE + KE_corr_candidate(i);
-del_VPE_candidate(i)=Vcr_candidate(i)-V_total(i);
-norm_delVPE(i)=del_VPE_candidate(i)/KE_corr_candidate(i);
+
+VPE = Calculate_PE_single_point(thetacl, ths, Pi, C, D, g);
+
+for i = 1:limit
+    MOD = Sorted_Mod{i};
+    Vcr_candidate(i) = Calculate_PE_single_point(CUEP_Candidate(i,:), ths, Pi, C, D, g);
+    KE_corr_candidate(i) = Calculate_KE_online(g, H, Ws, wcl, MOD);
+    V_total(i) = VPE + KE_corr_candidate(i);
+    
+    del_VPE_candidate(i) = Vcr_candidate(i) - V_total(i);
+    norm_delVPE(i) = del_VPE_candidate(i) / KE_corr_candidate(i);
 end
 
 ResultTable = table((1:limit)', Vcr_candidate, KE_corr_candidate, del_VPE_candidate, norm_delVPE, ...
     'VariableNames', {'Rank', 'V_CUEP', 'KE_Corr', 'Margin_DeltaV', 'Norm_Margin'});
-
 disp(ResultTable);
-% Find the lowers normalized potential energy
-[min_maargin, idx_mod]=min(norm_delVPE);
-Correct_MOD=Sorted_Mod{idx_mod};
-% [2 3]
-%[2 3]
-%% Assessment of the First Swing Stability
- thcuep=CUEP_Candidate(idx_mod,:);
- Vcr= Calculate_PE_single_point(thcuep, ths, Pi, C, D, g);
- VPEcl= Calculate_PE_single_point(thetacl, ths, Pi, C, D, g);
- KE_corr_cl = Calculate_KE_online(g, H, Ws, wcl,Correct_MOD);
- Vcl=VPEcl+KE_corr_cl;
- del_V=Vcr-Vcl;
- fprintf("Energy margin=%d\n",del_V);
-if del_V<0
-    Shed=1;
-    fprintf("Energy margin is negative System is Unstable take control action \n");
-else
-    Shed=0;
-    fprintf("Energy margin is positive System is Stable no Need to take control Action\n");
-   
-end
-%% Shedding Calculation
 
+[~, idx_mod] = min(norm_delVPE);
+Correct_MOD = Sorted_Mod{idx_mod};
+
+% Assessment of First Swing Stability
+thcuep = CUEP_Candidate(idx_mod,:);
+Vcr = Calculate_PE_single_point(thcuep, ths, Pi, C, D, g);
+VPEcl = Calculate_PE_single_point(thetacl, ths, Pi, C, D, g);
+KE_corr_cl = Calculate_KE_online(g, H, Ws, wcl, Correct_MOD);
+Vcl = VPEcl + KE_corr_cl;
+del_V = Vcr - Vcl;
+
+fprintf("Energy margin = %f\n", del_V);
+if del_V < 0
+    Shed = 1;
+    fprintf("Energy margin is negative. System is Unstable. Taking control action...\n");
+else
+    Shed = 0;
+    fprintf("Energy margin is positive. System is Stable. No action required.\n");
+end
+
+%% 8. AUTOMATED GENERATOR SHEDDING ALGORITHM
 if Shed == 1
-    Gen_idx = Gen_sh;
+    
     threshold = 0.001; 
     Psh_max = 1;
-    max_iter = 30;
+    max_iter = 100;
     
     pred_data_time = faultclearing_time+0.2;
     [~, idx_online] = min(abs(T - pred_data_time));
     delta_abs = delta(idx_online, :); 
     omega_abs = omega(idx_online, :);
+    display(delta_abs);
+    display(omega_abs);
     
     % --- INITIALIZE WARM START VARIABLES ---
     ths_guess = ths(:);
@@ -243,10 +223,23 @@ if Shed == 1
     
     fprintf('Iter %d: Shed %05.2f%% -> Vcr: %.4f, Vtot: %.4f, Margin: %.4f\n', ...
             k, Psh(k)*100, Vcr, Vtot(k), Vsh(k));
-            
+
+
+ % DETERMINATION OF SHEDDABLE GENERATORS
+    data_time = 1 + t_cl;
+    [~, idx_online] = min(abs(T - data_time));
+    wpred = omega(idx_online,:);
+    deltapred = delta(idx_online,:);
+    Pgen = Pm(100, 1:num_gen);
+    
+    % Calculate ratio of Kinetic Energy to Mechanical Power
+    KE = 0.5 * M' .* (wpred).^2;
+    Ratio = KE ./ Pgen;
+    [max_val, Gen_sh] = max(Ratio);  %Identify the most severely accelerated generator
+    Gen_idx = Gen_sh;
+   
     k = k + 1;
     Psh(k) = 0.01; % Initial 1% step
-    
     while k < max_iter
         % A. Update Network Parameters
         H1 = H; Pgen1 = Pgen; xd_p1 = xd_p;
@@ -282,11 +275,7 @@ if Shed == 1
         % C. UPDATE CUEP (Using Warm Start and Fixed Objective Function)
         obj_fun_cuep_shed = @(x) Calculate_Fsum(x, g, Pi1, C_new, D_new, H1);
         opts_opt = optimset('Algorithm','interior-point','Display','off');
-      % Dynamically bound the solver around the warm start guess
-        lb_cuep = thcuep_guess - (pi/4) * ones(g, 1); 
-        ub_cuep = thcuep_guess + (pi/4) * ones(g, 1);
-
-[x_cuep, ~, exit2] = fmincon(obj_fun_cuep_shed, thcuep_guess, [], [], H1', 0, lb_cuep, ub_cuep, [], opts_opt);
+        [x_cuep, ~, exit2] = fmincon(obj_fun_cuep_shed, thcuep_guess, [], [], H1', 0, -2*pi*ones(g,1), 2*pi*ones(g,1), [], opts_opt);
         
         if exit2 > 0
              thcuep_new = x_cuep - (sum(x_cuep(:).* H1(:)) / sum(H1));
@@ -315,72 +304,70 @@ if Shed == 1
         fprintf('Iter %d: Shed %05.2f%% -> Vcr: %.4f, Vtot: %.4f, Margin: %.4f\n', ...
             k, Psh(k)*100, Vcr_new, Vtot(k), Vsh(k));
             
-       % F. CHECK STABILITY AND CALCULATE NEXT SHEDDING AMOUNT
-         if Vsh(k) >= threshold  
+ % F. CHECK STABILITY AND CALCULATE NEXT SHEDDING AMOUNT
+        
+        if Vsh(k) >= threshold  
+            % FLOWCHART DIAMOND 1: "Vsh[k] < threshold ?" -> YES
             fprintf('>>> Analytical stable margin found at %.2f%% shedding.\n', Psh(k)*100);
             
-            % --- EMPIRICAL CALIBRATION FOR PHYSICAL SYSTEM ---
-            % Accounts for reactive power loss, voltage sag, and path approximations
-            % derived from offline PSS/E time-domain analysis.
-           % K_cal = 2.51; % Calibration multiplier
-           % Psh_actual = min(Psh(k) * K_cal, 1.0); % Cap at 100%
-            
-           % fprintf('>>> Applying calibration factor (Kc = %.2f).\n', K_cal);
-          %  fprintf('>>> Executing Physical Shed Command: %.2f%% of Gen %d.\n', Psh_actual*100, Gen_sh);
-            break;
-        else 
-            if Psh(k) >= Psh_max
-                 warning('Required shedding exceeds 100%% limit. Triggering system-wide backup action.');
-                 break;
+            % FLOWCHART DIAMOND 2: "Psh[k] < Psh_MAX ?"
+            if Psh(k) < Psh_max
+                % YES PATH: "Shed Psh amount of generation" -> "Command to Unit"
+                fprintf('>>> Executing Physical Shed Command: %.2f%% of Gen %d.\n', Psh(k)*100, Gen_idx);
+                break; % End loop, command sent successfully
+            else
+                % NO PATH: "Take other control actions"
+                warning('>>> Stable margin found, but required shed (%.2f%%) exceeds Psh_MAX limit. Taking other control actions.', Psh(k)*100);
+                break; % End loop, trigger secondary safety systems
             end
             
-            % --- IMPROVED SECANT METHOD (Strict Flowchart Adherence) ---
-            % Flowchart: "Interpolate/Extrapolate Psh value at V=0 using two points nearest to V=0"
+        else 
+             if k > max_iter || Psh(k) > 2.0 
+                 warning('Secant method diverged. Aborting.');
+                 break;
+             end
+              % (Optional safeguard to prevent MATLAB from freezing if secant diverges forever, 
+            % acting as an emergency loop-breaker, though technically not in the flowchart)
+
+            % FLOWCHART DIAMOND 1: "Vsh[k] < threshold ?" -> NO
+            
+            % FLOWCHART BLOCK: "Interpolate/Extrapolate Psh value at V=0 i.e. P1 using two points nearest to V=0"
             if k > 1
-                % 1. Find the two points evaluated so far that are closest to V = 0
                 [~, sorted_indices] = sort(abs(Vsh(1:k)));
                 idx1 = sorted_indices(1);
                 idx2 = sorted_indices(2);
                 
-                % Ensure the two points are distinct to avoid division by zero
                 if abs(Psh(idx1) - Psh(idx2)) < 1e-4
-                    P_new = Psh(k) + 0.05; % Fallback 5% step if points are too close
+                    P_new = Psh(k) + 0.05; 
                 else
-                    % 2. Calculate slope using the two nearest points
                     slope = (Vsh(idx1) - Vsh(idx2)) / (Psh(idx1) - Psh(idx2));
-                    
                     if abs(slope) < 1e-4
-                        slope = sign(Vsh(k)) * 0.01; % Prevent divide by zero
+                        slope = sign(Vsh(k)) * 0.01; 
                     end
-                    
-                    % 3. Interpolate/Extrapolate targeting V = 0
-                    target_V = 0; 
+                    target_V = 0; % Root finding target
                     P_new = Psh(idx1) + (target_V - Vsh(idx1)) / slope;
                 end
                 
-                % 4. Safeguard: Limit the maximum step size per iteration to prevent wild swings
+                % Numeric bounds to prevent wild secant extrapolations
                 delta_P = P_new - Psh(k);
-                delta_P = max(min(delta_P, 0.10), -0.10); % Max 10% change per iteration
+                delta_P = max(min(delta_P, 0.10), -0.10); 
                 P_new = Psh(k) + delta_P;
-                
             else
-                % If only 1 point exists, we cannot interpolate yet
-                P_new = Psh(k) + 0.02; % Take an exploratory 2% step
+                P_new = Psh(k) + 0.02; % Step size if only 1 point exists
             end
             
-            % 5. Clamp between 0 and maximum allowable shedding (Psh_max)
-            P_new = max(min(P_new, Psh_max), 0);
+            % Prevent physically impossible negative shedding guesses
+            P_new = max(P_new, 0); 
             
-            % 6. Force forward momentum: If the math suggests shedding less or gets stuck, 
-            % but the system is STILL unstable, force an increase from the highest shed so far.
-            if P_new <= max(Psh) && Vsh(k) < threshold
-                 P_new = max(Psh) + 0.01; % Force at least a 1% increase
-            end
-            
-            % 7. Update for next iteration (Flowchart: k = k + 1)
+            % FLOWCHART BLOCK: "k = k + 1"
             k = k + 1;
+            
+            % Set next Psh value for the beginning of the next loop iteration 
+            % (Aligns with Flowchart: "Psh[k] = P1")
             Psh(k) = P_new;
+            
         end
     end
 end
+
 toc
